@@ -28,17 +28,18 @@ The dataset covers 9 employees across 5 Kenyan cities: Nairobi, Mombasa, Kisumu,
 ```
 employee-salary-headcount-dashboard/
 ├── data/
-│   ├── employee_dataset_raw.csv          # Original, uncleaned dataset
+│   ├── employee dataset.csv          # Original, uncleaned dataset
 │   └── employee_dataset_cleaned.csv      # Cleaned dataset after processing
 ├── notebooks/
-│   └── employee_data_cleaning.ipynb      # Python/Pandas cleaning pipeline
+│   └── employee data cleaning.ipynb      # Python/Pandas cleaning pipeline
 ├── sql/
-│   └── employees_queries.sql             # SQL analysis queries
+│   └── employees queries.sql             # SQL analysis queries
 ├── dashboard/
-│   └── Employee_salary_dashboard.pbix    # Power BI dashboard file
+│   └── Employee salary dashboard.pbix    # Power BI dashboard file
 ├── reports/
 │   ├── Employee_Salary_Dashboard_Report.pdf
-│   └── charts/                           # Chart images used in the report
+│   └── charts/
+    Employees Salary & Headcount Dashboard                         # Chart images used in the report
 └── README.md
 ```
 
@@ -97,11 +98,11 @@ The dashboard includes:
    ```bash
    git clone https://github.com/Riq-wq/employee-salary-headcount-dashboard.git
    ```
-2. Open `notebooks/employee_data_cleaning.ipynb` to view/re-run the cleaning pipeline
+2. Open `notebooks/employee data cleaning.ipynb` to view/re-run the cleaning pipeline
 3. Load the cleaned CSV into MySQL, or run the queries in `sql/employees_queries.sql` against your own instance
-4. Open `dashboard/Employee_salary_dashboard.pbix` in Power BI Desktop to explore the interactive dashboard
+4. Open `dashboard/Employee salary dashboard.pbix` in Power BI Desktop to explore the interactive dashboard
 5. View `reports/Employee_Salary_Dashboard_Report.pdf` for a static summary of findings
-
+6.View 'reports/Employee Salary & Headcount Dashboard' for  presentations
 ---
 
 ## Tools & Skills Demonstrated
