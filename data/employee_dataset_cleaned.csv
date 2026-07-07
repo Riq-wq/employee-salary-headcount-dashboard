@@ -1,0 +1,10 @@
+EmployeeID,Name,Age,City,Salary,JoinDate
+1,Alice,25,Nairobi,55000.0,2025-01-15
+2,Bob,29,Mombasa,62000.0,2025-02-10
+3,Charlie,29,Kisumu,59500.0,2025-02-18
+5,Diana,31,Kisumu,70000.0,2025-03-01
+6,Evan,27,Nakuru,48000.0,2025-03-15
+7,Faith,29,Eldoret,51000.0,2025-04-02
+8,George,40,Nairobi,90000.0,2025-04-18
+9,Jamal,35,Kisumu,61000.0,2025-05-05
+10,Hassan,28,Mombasa,58000.0,2025-05-20
