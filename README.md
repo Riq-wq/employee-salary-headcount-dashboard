@@ -133,7 +133,7 @@ employee-salary-headcount-dashboard/
 └── README.md
 ```
 
-> Adjust the file names above to match your actual repo.
+
 
 ---
 
