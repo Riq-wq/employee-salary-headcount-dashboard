@@ -18,7 +18,7 @@
 
 ![Employee Salary and Headcount Dashboard](assets/dashboard.png)
 
-> 💡 *Replace `assets/dashboard.png` with a real screenshot. Recruiters won't open a `.pbix` file — they will look at a picture.*
+
 
 ---
 
