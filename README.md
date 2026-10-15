@@ -1,117 +1,166 @@
-# Employee Salary & Headcount Dashboard
+<div align="center">
 
-An end-to-end data analytics project: cleaning raw employee HR data with Python, storing it in MySQL, querying it with SQL, and visualizing salary and headcount trends in an interactive Power BI dashboard.
+# 🧑‍💼 Employee Salary & Headcount Dashboard
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
-![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat&logo=pandas&logoColor=white)
-![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=flat&logo=mysql&logoColor=white)
-![Power BI](https://img.shields.io/badge/Power%20BI-F2C811?style=flat&logo=powerbi&logoColor=black)
+**An end-to-end HR analytics pipeline — from dirty CSV to a decision-ready Power BI dashboard.**
 
----
+`Python` · `Pandas` · `MySQL` · `SQL` · `Power BI` · `DAX` · `ReportLab`
 
-## Project Overview
-
-This project takes a messy, real-world-style HR dataset (duplicates, missing values, invalid entries, salary outliers) through a full analytics pipeline:
-
-1. **Clean** — Python (Pandas, NumPy) in a Jupyter notebook
-2. **Store** — Load the cleaned data into a MySQL database
-3. **Query** — Explore and aggregate the data with SQL
-4. **Visualize** — Build an interactive Power BI dashboard with KPIs, charts, and slicers
-5. **Report** — Export key findings as a shareable PDF report
-
-The dataset covers 9 employees across 5 Kenyan cities: Nairobi, Mombasa, Kisumu, Nakuru, and Eldoret.
+</div>
 
 ---
 
-## Repository Structure
+## 📸 Dashboard Preview
+
+<!-- FILL THIS IN — this is the highest-impact thing in the whole README.
+     Export your Power BI dashboard as a PNG (File → Export → Image),
+     drop it in an /assets folder in this repo, then reference it below. -->
+
+![Employee Salary and Headcount Dashboard](assets/dashboard.png)
+
+> 💡 *Replace `assets/dashboard.png` with a real screenshot of your dashboard. Recruiters won't open a `.pbix` file — they will look at a picture.*
+
+---
+
+## 🎯 The Business Problem
+
+HR teams need to answer questions like:
+
+- Are we paying fairly **across departments and locations**?
+- Where is our **headcount growing** — and where is it quietly shrinking?
+- Which departments carry the **highest salary load** relative to their size?
+- Are there **outliers** (over/under-paid roles) worth investigating?
+
+Raw HR exports don't answer these. They're messy, inconsistent, and unaggregated. This project builds the pipeline that turns that raw export into answers.
+
+---
+
+## 🗂️ Dataset
+
+| | |
+| --- | --- |
+| **Source** | <!-- FILL: e.g. "Synthetic/Kaggle HR dataset" --> |
+| **Rows** | <!-- FILL: e.g. "1,000+ employee records" --> |
+| **Key fields** | Employee name, department, job title, city, salary, hire date, headcount |
+| **Coverage** | Multiple Kenyan cities, multiple departments |
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    A[("📄 Raw HR CSV")] --> B["🐍 Python / Pandas<br/>Clean & Transform"]
+    B --> C[("🗄️ MySQL<br/>Structured Storage")]
+    C --> D["🧮 SQL Queries<br/>Business Logic"]
+    D --> E["📊 Power BI + DAX<br/>KPI Cards & Slicers"]
+    E --> F["📑 ReportLab<br/>Automated PDF Report"]
+```
+
+**Why this order?** Each stage does one job well: Python for messy cleaning, SQL for reliable aggregation, Power BI for the visual layer, and ReportLab for a shareable report that doesn't require opening a BI tool.
+
+---
+
+## ❓ Questions This Analysis Answers
+
+<!-- These are the questions the dashboard responds to. Confirm/adjust to match your actual slicers and KPIs. -->
+
+1. What is total headcount and how has it changed over time?
+2. Which departments have the highest average salary?
+3. How does salary vary across cities?
+4. What is the salary distribution within each department (spread, not just average)?
+5. Where are the outliers — roles paid well above/below their peers?
+
+---
+
+## 🔍 Key Findings
+
+<!-- ⚠️ Replace every [X] with YOUR real numbers from the analysis.
+     Do NOT publish a number you can't defend in an interview. -->
+
+- **Headcount** grew from `[X]` to `[Y]` employees over the period — a `[Z%]` change.
+- **`[Department A]`** carries the highest average salary at `$[X]`, roughly `[Y%]` above the company mean.
+- Salaries vary by `[X%]` across cities for the same role band, suggesting **location-adjusted pay gaps** worth reviewing.
+- `[N]` employees fell outside the expected salary range for their role — potential **mis-grading or retention risk**.
+
+> **Recommendation:** `[One clear, actionable line — e.g. "Review pay bands in Department A and align location adjustments across the three highest-cost cities."]`
+
+---
+
+## 📊 Dashboard Features
+
+- **KPI cards** — total headcount, average salary, departments covered
+- **Hiring trend line** — headcount movement over time
+- **Slicers** — filter by department and city
+- **Department & city breakdowns** — compare salary and headcount side by side
+- **Automated PDF export** — a shareable report generated with ReportLab
+
+---
+
+## 📁 Repository Structure
 
 ```
 employee-salary-headcount-dashboard/
+├── assets/
+│   └── dashboard.png          # dashboard screenshot
 ├── data/
-│   ├── employee dataset.csv          # Original, uncleaned dataset
-│   └── employee_dataset_cleaned.csv      # Cleaned dataset after processing
+│   └── raw_employees.csv      # source data
 ├── notebooks/
-│   └── employee data cleaning.ipynb      # Python/Pandas cleaning pipeline
+│   └── cleaning.ipynb         # Python/Pandas cleaning
 ├── sql/
-│   └── employees queries.sql             # SQL analysis queries
-├── dashboard/
-│   └── Employee salary dashboard.pbix    # Power BI dashboard file
+│   └── analysis_queries.sql   # business-logic queries
 ├── reports/
-│   ├── Employee_Salary_Dashboard_Report.pdf
-│   └── charts/
-    Employees Salary & Headcount Dashboard                         # Chart images used in the report
+│   └── employee_report.pdf    # ReportLab output
+├── dashboard.pbix             # Power BI file
 └── README.md
+```
+
+> Adjust the file names above to match your actual repo.
+
+---
+
+## ▶️ How to Reproduce
+
+```bash
+# 1. Clone
+git clone https://github.com/Riq-wq/employee-salary-headcount-dashboard.git
+cd employee-salary-headcount-dashboard
+
+# 2. Install Python dependencies
+pip install pandas mysql-connector-python reportlab
+
+# 3. Run the cleaning script
+python notebooks/cleaning.py
+
+# 4. Load into MySQL
+mysql -u <user> -p < database setup.sql
+
+# 5. Open dashboard.pbix in Power BI Desktop and refresh
 ```
 
 ---
 
-## Data Cleaning
+## 🧠 Skills Demonstrated
 
-The raw dataset contained several common real-world data quality issues, each handled explicitly in the cleaning notebook:
-
-| Issue | Resolution |
-|---|---|
-| Duplicate employee records | Dropped exact duplicate rows |
-| Missing employee name | Filled with a placeholder, corrected manually |
-| Missing age values | Filled with median age |
-| Invalid negative age | Reset to missing, re-filled with median, rounded to whole years |
-| Missing salary value | Filled with median salary |
-| Missing city value | Filled with the most frequent city (mode) |
-| Salary outlier (KES 900,000) | Reviewed against IQR bounds and corrected |
-| Inconsistent date format | Parsed as day-first dates and standardized |
+| Skill | Where |
+| --- | --- |
+| **Data cleaning** (missing values, types, duplicates) | `notebooks/cleaning.ipynb` |
+| **Relational storage & schema design** | MySQL |
+| **Business-logic SQL** (aggregation, grouping, ranking) | `sql/analysis_queries.sql` |
+| **Data modeling & DAX measures** | Power BI |
+| **Automated reporting** | ReportLab |
+| **End-to-end pipeline thinking** | Whole repo |
 
 ---
 
-## SQL Analysis
+## 🚀 What I'd Do Next
 
-The `sql/employees_queries.sql` file includes queries covering:
-- Total employee count and total salary expense
-- Highest- and lowest-paid employees
-- Average salary and average age
-- Salary and headcount breakdowns by city
-- Employees earning above the company average
-- Hiring trends by month
+- Add **salary-benchmark comparison** against an external market dataset
+- Introduce **attrition analysis** if historical exit data becomes available
+- Migrate the pipeline to **dbt + a cloud warehouse** for scheduled refreshes
 
 ---
 
-## Power BI Dashboard
-
-The dashboard includes:
-- **KPI cards** — Total Employees, Total Salary Expense, Average Salary, Average Age
-- **Bar chart** — Average salary by city
-- **Column chart** — Headcount by city
-- **Line chart** — Hiring trend by month
-- **Table** — Employees ranked by salary
-- **Slicers** — Filter by City and by Month hired
-
-### Key Findings
-- Nairobi has the highest average salary (KES 72,500); Nakuru has the lowest (KES 48,000)
-- Kisumu has the largest headcount (3 employees)
-- Hiring was steady across the first five months of 2025
-- Total salary expense across all employees: KES 554,500
-
----
-
-## How to Run This Project
-
-1. Clone the repository
-   ```bash
-   git clone https://github.com/Riq-wq/employee-salary-headcount-dashboard.git
-   ```
-2. Open `notebooks/employee data cleaning.ipynb` to view/re-run the cleaning pipeline
-3. Load the cleaned CSV into MySQL, or run the queries in `sql/employees_queries.sql` against your own instance
-4. Open `dashboard/Employee salary dashboard.pbix` in Power BI Desktop to explore the interactive dashboard
-5. View `reports/Employee_Salary_Dashboard_Report.pdf` for a static summary of findings
-6.View 'reports/Employee Salary & Headcount Dashboard' for  presentations
----
-
-## Tools & Skills Demonstrated
-
-Python · Pandas · NumPy · SQL · MySQL · Power BI · DAX · Data Cleaning · Data Visualization
-
----
-
-## Author
-
-**Hassan Jumaa (Riq)**
-Data Analyst | [GitHub](https://github.com/Riq-wq)
+<div align="center">
+<sub>Built by <a href="https://github.com/Riq-wq">Hassan Jumaa</a> · <a href="https://riq-wq.github.io/Myportfolio/">Portfolio</a> · <a href="https://www.linkedin.com/in/mrisa-juma-56a600416">LinkedIn</a></sub>
+</div>
