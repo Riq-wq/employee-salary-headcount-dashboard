@@ -38,19 +38,27 @@ The raw export is small, inconsistent, and unaggregated, so it answers none of t
 
 | | |
 | --- | --- |
-| **Source** | Raw HR export (CSV) |
-| **Rows** | 9 active employees |
+| **Source** | Raw HR export (CSV) — deliberately messy, as in the real world |
+| **Raw rows** | 10 |
+| **Clean rows** | 9 |
 | **Fields** | `EmployeeID`, `Name`, `Age`, `City`, `Salary`, `JoinDate` |
 | **Coverage** | 5 Kenyan cities · Jan–May 2025 · ages 25–40 |
 
-**Data-quality issues found during cleaning:**
+### 🧹 Data-Quality Issues & Cleaning Decisions
 
-- `EmployeeID 4` is missing from the sequence — the record was never created or was deleted upstream.
-- `JoinDate` stored as `dd/mm/yyyy` text, not a proper date type.
-- Mixed capitalisation and spacing in `City` values.
-- `Salary` stored as text in the raw export — needs casting to numeric before any aggregation.
+The raw export contained **7 distinct problems** — enough to make any naive analysis wrong. Each was fixed deliberately and documented, never silently:
 
-> Catching and documenting these is part of the job — a clean dataset that silently drops a record is worse than a messy one you understand.
+| Row | Raw problem | Decision | Reasoning |
+| --- | --- | --- | --- |
+| `ID 2` (Bob) | `Age` blank | Imputed **29** (median age) | Median is robust to outliers; safe for a single gap |
+| `ID 3` (Charlie) | `Salary` blank | Imputed **59,500** (median salary) | The 900,000 typo makes the mean unusable — median is safer |
+| `ID 4` (Alice) | **Exact duplicate** of `ID 1` | **Row removed** | Same person twice would double-count headcount and salary bill |
+| `ID 5` (Diana) | `City` blank | Recovered as **Kisumu** | *State your recovery method here — e.g. cross-checked the source record* |
+| `ID 7` (Faith) | `Age = -5` | Corrected to **29** | A negative age is invalid data, not a real value |
+| `ID 8` (George) | `Salary = 900,000` | Corrected to **90,000** | A 10× typo — inconsistent with the role and every peer |
+| `ID 9` (—) | `Name` blank | Recovered as **Jamal** | *State your recovery method here* |
+
+> ⚠️ **Why this matters.** Computed on the raw data, the average salary comes out at **KES 151,111**. The true figure is **KES 61,611** — the uncleaned number is **145% too high**. A single `900,000` typo and one duplicate row are enough to make a dashboard actively mislead. This step is the analysis.
 
 ---
 
@@ -87,11 +95,12 @@ flowchart LR
 - **Nakuru is the lowest-paying city** at **KES 48,000**, **22% below** the company mean, and **Eldoret** sits at **KES 51,000**.
 - **Pay rises steeply with age.** The youngest employee (25) earns **KES 55,000**; the oldest (40) earns **KES 90,000** — a **1.88× gap**. On this dataset, age is the strongest single predictor of salary.
 - **One statistical outlier.** George's **KES 90,000** sits above the Tukey upper fence of **KES 85,500** (Q1 = 53,000, Q3 = 66,000, IQR = 13,000). He is the only employee flagged.
+- **Cleaning changed the entire conclusion.** Computed on the raw export, average salary reads **KES 151,111**; correctly cleaned it is **KES 61,611** — a **145% inflation** caused by a single `900,000` typo and one duplicated row. Untreated, this data would have produced a false narrative.
 
 > **Recommendation**
 > 1. **Introduce age/experience-based pay bands** so compensation tracks seniority explicitly rather than implicitly — this removes the guesswork behind city-level differences.
 > 2. **Review the single senior outlier** against market benchmarks before treating Nairobi's average as a real signal.
-> 3. **Close the data-quality gap** — investigate the missing `EmployeeID 4` and enforce a primary key upstream so records can't vanish unnoticed.
+> 3. **Add validation at the source.** A primary-key constraint to block duplicate `EmployeeID`s, a range check to reject impossible ages, and a sanity cap on `Salary` would have caught all 7 issues before they reached a report — this is cheaper than cleaning downstream every time.
 
 ---
 
@@ -153,7 +162,7 @@ mysql -u <user> -p < schema.sql
 
 | Skill | Where |
 | --- | --- |
-| **Data cleaning** — missing IDs, date parsing, type casting | `notebooks/cleaning.ipynb` |
+| **Data cleaning** — missing values, duplicate detection, invalid ranges, outlier correction | `notebooks/cleaning.ipynb` |
 | **Relational storage & schema design** | MySQL |
 | **Business-logic SQL** — aggregation, grouping, ranking | `sql/analysis_queries.sql` |
 | **Distribution analysis** — mean vs median, IQR outlier detection | Analysis + report |
