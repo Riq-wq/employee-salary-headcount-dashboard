@@ -38,7 +38,7 @@ FROM employees
 ORDER BY Age ASC
 LIMIT 1;
 -- Display employees whose city is Nairobi
-select * from employees where city="Nairobi";
+select * from employees where city='Nairobi';
 
 -- Count how many employees are in each city
 
