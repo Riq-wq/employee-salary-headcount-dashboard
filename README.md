@@ -12,11 +12,7 @@
 
 ## 📸 Dashboard Preview
 
-<!-- FILL THIS IN — highest-impact item in the README.
-     Export your Power BI dashboard as PNG (File → Export → Image),
-     save it to an /assets folder in this repo, and it will render below. -->
-
-![Employee Salary and Headcount Dashboard](assets/dashboard.png)
+![Employee Salary and Headcount Dashboard](assets/dashboard.png?v=2)
 
 
 
