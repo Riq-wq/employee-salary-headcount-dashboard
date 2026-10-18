@@ -1,6 +1,6 @@
 ﻿<div align="center">
 
-# ðŸ§‘â€ðŸ’¼ Employee Salary & Headcount Dashboard
+# Employee Salary & Headcount Dashboard
 
 **An end-to-end HR analytics pipeline â€” from a raw, messy CSV to a decision-ready Power BI dashboard.**
 
@@ -10,7 +10,7 @@
 
 ---
 ## Dashboard Preview
-## ðŸ“¸ Dashboard Preview
+## Dashboard Preview
 
 ![Employee Salary and Headcount Dashboard](assets/dashboard.png?v=2)
 
