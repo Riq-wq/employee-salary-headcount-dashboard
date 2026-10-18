@@ -9,7 +9,7 @@
 </div>
 
 ---
-
+## Dashboard Preview
 ## 📸 Dashboard Preview
 
 ![Employee Salary and Headcount Dashboard](assets/dashboard.png?v=2)
