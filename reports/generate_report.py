@@ -154,6 +154,12 @@ def footer(canvas, doc):
     canvas.restoreState()
 
 
+def first_page(canvas, doc):
+    """Page 1 carries the banner as well as the footer, so it gets a page number too."""
+    header(canvas, doc)
+    footer(canvas, doc)
+
+
 def band(text: str, style=ParagraphStyle("x", parent=H1)) -> list:
     """Section heading with a kicker line above it."""
     return [Paragraph(text.upper(), KICKER), Spacer(1, 2), Paragraph(text, style)]
@@ -270,7 +276,7 @@ def build() -> Path:
     r_age = pearson(ages, salaries)
 
     # --- raw vs cleaned (the headline finding) -------------------------
-    raw_salaries = [as_int(r["Salary"]) for r in raw if as_int(r["Salary"]) is not None]
+    raw_salaries = [v for v in (as_int(r["Salary"]) for r in raw) if v is not None]
     raw_mean = statistics.mean(raw_salaries)
     raw_max = max(raw_salaries)
     inflation = (raw_mean - mean) / mean * 100
@@ -281,11 +287,14 @@ def build() -> Path:
     age_gap = oldest["Salary"] / youngest["Salary"]
 
     # --- Kisumu with vs without the Diana assumption -------------------
-    diana_salary = next(r["Salary"] for r in clean if r["Name"] == "Diana")
-    kisumu_all = by_city["Kisumu"]
-    kisumu_no_diana = [s for s in kisumu_all if s != diana_salary]
-    kisumu_with = statistics.mean(kisumu_all)
-    kisumu_without = statistics.mean(kisumu_no_diana)
+    # Exclude Diana's row by primary key, never by salary value: matching on
+    # the value would also drop any colleague paid exactly the same amount.
+    diana_id = next(r["EmployeeID"] for r in clean if r["Name"] == "Diana")
+    kisumu_rows = [r for r in clean if r["City"] == "Kisumu"]
+    kisumu_with = statistics.mean(r["Salary"] for r in kisumu_rows)
+    kisumu_without = statistics.mean(
+        r["Salary"] for r in kisumu_rows if r["EmployeeID"] != diana_id
+    )
 
     # --- payroll ramp --------------------------------------------------
     payroll = payroll_by_month(clean)
@@ -484,7 +493,7 @@ def build() -> Path:
         title="Employee Salary & Headcount Dashboard - Data Analysis Report",
         author="Hassan Jumaa (Riq)",
     )
-    doc.build(story, onFirstPage=header, onLaterPages=footer)
+    doc.build(story, onFirstPage=first_page, onLaterPages=footer)
 
     # ---- console summary for quick verification ----------------------
     print(f"Written : {OUTPUT}")
