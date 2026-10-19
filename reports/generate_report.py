@@ -364,7 +364,10 @@ def build() -> Path:
     tbl = [[Paragraph(x, CELL_W) for x in ["Issue Found", "Affected Record", "Resolution Applied"]]]
     for a, b, c in issues:
         tbl.append([Paragraph(a, CELL_B), Paragraph(b, CELL), Paragraph(c, CELL)])
-    story += [styled_table(tbl, [38 * mm, 38 * mm, CONTENT_W - 76 * mm])]
+    story += [styled_table(tbl, [38 * mm, 38 * mm, CONTENT_W - 76 * mm]), Spacer(1, 4)]
+    story += [Paragraph(
+        "Row IDs refer to the raw export &#8212; the cleaned file renumbers rows, so raw "
+        "ID 5 (Diana) is ID 4 there.", SMALL)]
 
     # ---- page 2 ------------------------------------------------------
     story += [PageBreak()]
