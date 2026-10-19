@@ -1,0 +1,15 @@
+# Binary assets must never go through line-ending conversion.
+# This repo has core.autocrlf=true; without these rules Git classifies the PDF as
+# text and injects CR bytes into its binary streams on checkout, which corrupts
+# its xref table (the PPTX and PNGs happen to be detected as binary already).
+*.pdf    binary
+*.pptx   binary
+*.pbix   binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.xlsx   binary
+*.docx   binary
+*.zip    binary
