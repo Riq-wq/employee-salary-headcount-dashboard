@@ -147,10 +147,11 @@ employee-salary-headcount-dashboard/
 ├── reports/
 │   ├── Employee Salary & Headcount Dashboard.pptx # slide deck
 │   ├── Employee_Salary_Dashboard_Report.pdf       # ReportLab PDF output
-│   └── charts/
-│       ├── headcount_by_city.png
-│       ├── hiring_trend.png
-│       └── salary_by_city.png
+│   ├── charts/
+│   │   ├── headcount_by_city.png
+│   │   ├── hiring_trend.png
+│   │   └── salary_by_city.png
+│   └── generate_report.py                         # regenerates the PDF from the data
 ├── sql/
 │   └── employees queries.sql                      # business-logic queries
 ├── .gitignore
@@ -180,6 +181,9 @@ jupyter notebook "notebooks/employee  data cleaning.ipynb"
 mysql -u <user> -p employee_db < "sql/employees queries.sql"
 
 # 6. Open "dashboard/Employee salary dashboard.pbix" in Power BI Desktop and refresh
+
+# 7. Regenerate the PDF report from the data (optional)
+python reports/generate_report.py
 ```
 
 > **Note:** the notebook reads DB credentials from an untracked `.env` file. Create one next to the notebook with your own values — never hard-code them:
