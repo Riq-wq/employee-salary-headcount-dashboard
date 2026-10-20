@@ -120,6 +120,7 @@ flowchart LR
 - **KPI cards** — total headcount, total salary bill, average salary
 - **Headcount trend line** — monthly hiring, Jan–May 2025
 - **City slicer** — filter every visual by location
+- **Month slicer** -filter every visual by month
 - **Average salary by city** — ranked comparison
 - **Age vs salary scatter** — visualises the experience–pay relationship and isolates the outlier
 - **Automated PDF export** — a shareable report generated with ReportLab
