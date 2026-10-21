@@ -93,6 +93,23 @@ flowchart LR
 
 The **validation gate is deliberate**: if the data doesn't meet the documented expectations, the run stops *before* anything is written. A pipeline that fails loudly is more trustworthy than one that quietly emits a plausible-looking dashboard.
 
+> **If the diagram does not appear:** GitHub renders Mermaid from a remote service, so it can fail to load on a slow connection or behind a privacy extension — the page shows *"Unable to render rich display"* instead. The same flow in text:
+>
+> ```text
+>   Task Scheduler (06:00)
+>         |
+>         v
+>   raw HR CSV --> clean --> 15 checks --fail--> STOP, nothing written
+>                      |        |
+>                      |        pass
+>                      |        v
+>                      |   cleaned CSV --> MySQL --> Power BI
+>                      |         |
+>                      |         +----------> PDF report
+>                      v
+>                 (cleaning is where the 7 defects are repaired)
+> ```
+
 ---
 
 ## ⚙️ Automation
