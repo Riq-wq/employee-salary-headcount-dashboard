@@ -142,6 +142,21 @@ Comparing to last successful run (2026-10-21T16:39:55+00:00)
   NEW: Kirau
 ```
 
+**Generated files are protected from hand-edits.** `employee_dataset_cleaned.csv` is *output* — it is rebuilt from the raw source on every run, so an edit to it would be silently overwritten. The state file therefore records the SHA-256 of the cleaned CSV as written, and the pipeline compares that against the file on disk before rebuilding it. If they differ, it says so and points you at the file to edit instead:
+
+```
+WARNING: the cleaned CSV was edited by hand since the last run.
+  file   : data\employee_dataset_cleaned.csv
+  last written : 162FA78CD6F37235...
+  now on disk  : 3E80EE98C74BE615...
+  This file is REGENERATED from the raw source on every run,
+  so those edits are about to be overwritten.
+  To add an employee, edit the RAW source instead:
+    data\employee dataset.csv
+```
+
+**Which file to edit:** `data/employee dataset.csv` is the **source** — edit it, and the row flows through to the cleaned CSV, MySQL, the PDF report and the dashboard. `data/employee_dataset_cleaned.csv` is **output** — it is regenerated on every run and anything written there by hand is discarded.
+
 The numbers in this README describe the **nine-employee snapshot** the analysis was published on. They remain true of that snapshot; the state file is what keeps the current totals honest once the data grows.
 
 **Incremental loading (`scripts/incremental.py`)** replaces the notebook's `if_exists="replace"`:

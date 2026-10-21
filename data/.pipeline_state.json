@@ -1,5 +1,5 @@
 {
-  "taken_at": "2026-10-21T16:46:17+00:00",
+  "taken_at": "2026-10-21T16:55:24+00:00",
   "raw_rows": 10,
   "clean_rows": 9,
   "total_salary": 554500,
@@ -15,5 +15,7 @@
     "George",
     "Hassan",
     "Jamal"
-  ]
+  ],
+  "clean_sha256": "162FA78CD6F3723563FDC1ECC1DBB52CF440D48F241BFFCC637B2E016BCE3844",
+  "raw_sha256": "F887AC26956C1FB553B73D774C1F3A4EA97FEF5631C592B4BBD504203E71139C"
 }

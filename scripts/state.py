@@ -35,6 +35,7 @@ across machines and the project's history of change is auditable in git.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -43,6 +44,23 @@ from pathlib import Path
 import pandas as pd
 
 STATE_FILENAME = ".pipeline_state.json"
+
+
+def file_sha256(path: Path) -> str:
+    """SHA-256 of a file, or '' if it does not exist.
+
+    Used to detect a hand-edit to a GENERATED file. The cleaned CSV is
+    rewritten from the raw source on every run, so any difference between the
+    hash we last wrote and the hash on disk means someone edited it by hand —
+    and their edit is about to be overwritten.
+    """
+    if not path.exists():
+        return ""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest().upper()
 
 
 # --------------------------------------------------------------------------
@@ -59,10 +77,14 @@ class Snapshot:
     mean_salary: int
     median_salary: int
     names: list[str] = field(default_factory=list)
+    clean_sha256: str = ""        # hash of the cleaned CSV we last wrote
+    raw_sha256: str = ""          # hash of the raw source we last read
 
     # ------------------------------------------------------------------
     @classmethod
-    def from_frames(cls, raw: pd.DataFrame, clean: pd.DataFrame) -> "Snapshot":
+    def from_frames(cls, raw: pd.DataFrame, clean: pd.DataFrame,
+                    clean_path: Path | None = None,
+                    raw_path: Path | None = None) -> "Snapshot":
         return cls(
             taken_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             raw_rows=len(raw),
@@ -71,6 +93,8 @@ class Snapshot:
             mean_salary=int(round(clean["Salary"].mean())),
             median_salary=int(clean["Salary"].median()),
             names=sorted(str(n) for n in clean["Name"]),
+            clean_sha256=file_sha256(clean_path) if clean_path else "",
+            raw_sha256=file_sha256(raw_path) if raw_path else "",
         )
 
     def to_dict(self) -> dict:
@@ -82,6 +106,8 @@ class Snapshot:
             "mean_salary": self.mean_salary,
             "median_salary": self.median_salary,
             "names": self.names,
+            "clean_sha256": self.clean_sha256,
+            "raw_sha256": self.raw_sha256,
         }
 
     @classmethod
@@ -94,6 +120,8 @@ class Snapshot:
             mean_salary=int(d["mean_salary"]),
             median_salary=int(d["median_salary"]),
             names=list(d.get("names", [])),
+            clean_sha256=d.get("clean_sha256", ""),
+            raw_sha256=d.get("raw_sha256", ""),
         )
 
 

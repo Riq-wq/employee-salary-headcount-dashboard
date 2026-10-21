@@ -43,7 +43,7 @@ from sqlalchemy import create_engine
 from checks import run_all_checks, DataQualityError
 from incremental import incremental_load
 from state import (
-    STATE_FILENAME, Snapshot, compare, load_state, save_state,
+    STATE_FILENAME, Snapshot, compare, file_sha256, load_state, save_state,
 )
 
 # --------------------------------------------------------------------------
@@ -142,8 +142,8 @@ def impute_median_age(df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------
 # Stage 2 — write the cleaned CSV
 # --------------------------------------------------------------------------
-def write_clean(df: pd.DataFrame, path: Path) -> None:
-    """Write the cleaned dataset.
+def write_clean(df: pd.DataFrame, path: Path) -> str:
+    """Write the cleaned dataset and return its SHA-256.
 
     JoinDate is written in its original d/m/Y text form because
     ``reports/generate_report.py`` parses it with ``%d/%m/%Y``. We deliberately
@@ -153,9 +153,14 @@ def write_clean(df: pd.DataFrame, path: Path) -> None:
     does not normalise CSV, and every other text file here is CRLF). Pandas on
     Windows writes CRLF by default, but we set it explicitly so the output is
     identical on any platform.
+
+    The returned hash is of the file AS WRITTEN, so the state file records what
+    we produced rather than what was on disk beforehand. That is what makes the
+    hand-edit detection reliable.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False, encoding="utf-8", lineterminator="\r\n")
+    return file_sha256(path)
 
 
 # --------------------------------------------------------------------------
@@ -227,14 +232,38 @@ def main() -> int:
         return 2
 
     # -- stage 3b: report what changed against the last successful run ------
-    current = Snapshot.from_frames(raw, clean_df)
+    # The hash of the cleaned CSV must be captured BEFORE the new file is
+    # written, so it reflects what was on disk (possibly hand-edited) rather
+    # than what we are about to produce.
+    on_disk_before = file_sha256(CLEAN_CSV)
+
+    current = Snapshot.from_frames(raw, clean_df, raw_path=RAW_CSV)
     drift = compare(previous, current)
     print()
     for line in drift.lines():
         print(line)
 
+    # -- stage 3c: was a GENERATED file hand-edited? ------------------------
+    # The cleaned CSV is regenerated from the raw source on every run, so a
+    # hand-edit to it is about to be overwritten. Say so BEFORE it happens,
+    # rather than silently discarding someone's work.
+    if previous is not None and previous.clean_sha256:
+        if on_disk_before and on_disk_before != previous.clean_sha256:
+            print()
+            print("!" * 60)
+            print("WARNING: the cleaned CSV was edited by hand since the last run.")
+            print(f"  file   : {CLEAN_CSV.relative_to(ROOT)}")
+            print(f"  last written : {previous.clean_sha256[:16]}...")
+            print(f"  now on disk  : {on_disk_before[:16]}...")
+            print("  This file is REGENERATED from the raw source on every run,")
+            print("  so those edits are about to be overwritten.")
+            print("  To add an employee, edit the RAW source instead:")
+            print(f"    {RAW_CSV.relative_to(ROOT)}")
+            print("!" * 60)
+
     # -- stage 4: write + incremental load ---------------------------------
-    write_clean(clean_df, CLEAN_CSV)
+    written_hash = write_clean(clean_df, CLEAN_CSV)
+    current.clean_sha256 = written_hash
     print(f"\n[4/4] Wrote {CLEAN_CSV.relative_to(ROOT)}")
 
     engine = get_engine()
