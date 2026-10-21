@@ -131,7 +131,7 @@ The clearest justification for this layer: the raw file originally contained `Ag
 
 Adding an employee is therefore accepted and **reported**. Removing rows is treated more carefully, because the two cases mean different things: a **departure is a decision** and passes (it is reported as `GONE:`), while a **truncated export is a defect** and is blocked. The rule is that a run may not lose more than `MAX_ROW_LOSS_PCT` (40%) of its rows in one go, and the salary bill may not move by more than `MAX_TOTAL_MOVE_PCT` (80%) — the latter is what catches a duplicated or corrupted export.
 
-**What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it:
+**What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it. *The example below shows what the output looks like when someone new is added — it illustrates the format, and does not change any of the figures in this README, which describe the published nine-employee snapshot:*
 
 ```
 Comparing to last successful run (2026-10-21T16:39:55+00:00)
@@ -168,7 +168,7 @@ Three different questions get three different answers, in three different places
 | *How did the numbers change over time?* | **`git log` on the state file** | ✅ yes — this is the record |
 | *When was this specific row last written?* | `last_updated` column in MySQL | in the database |
 
-**The git log is the history.** A state file on its own is only a *latest snapshot* — each run overwrites the last, so the history would be gone. So a successful run commits that file to git, and the commit log becomes the audit trail:
+**The git log is the history.** A state file on its own is only a *latest snapshot* — each run overwrites the last, so the history would be gone. So a successful run commits that file to git, and the commit log becomes the audit trail: *example output:*
 
 ```
 $ git log --oneline -- data/.pipeline_state.json
@@ -176,7 +176,7 @@ Run 2026-10-22 06:00 - 10 rows, total 631,000
 Run 2026-10-21 06:00 - 9 rows, total 554,500
 ```
 
-Each message carries the headline numbers, and the people who joined or left:
+Each message carries the headline numbers, and the people who joined or left. *Example — the message a run produces when a new hire has joined:*
 
 ```
 Run 2026-10-22 06:00 - 10 rows, total 631,000
@@ -191,7 +191,7 @@ joined : Kirau
 Recorded automatically by scripts/run_scheduled.py
 ```
 
-A run where nothing changed says so, so a routine run is distinguishable from a change in the log:
+A run where nothing changed says so, so a routine run is distinguishable from a change in the log: *Example — the message from a run where the data was identical to the previous one:*
 
 ```
 Run 2026-10-21 06:00 - 9 rows, total 554,500
