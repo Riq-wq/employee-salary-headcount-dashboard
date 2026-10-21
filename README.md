@@ -64,10 +64,12 @@ A dashboard that hides its own gaps is worse than no dashboard. Two values in th
 
 | Value | Status | Why it is not recoverable | Impact |
 | --- | --- | --- | --- |
-| **Diana's `City` → Kisumu** | **Assumption** | Location cannot be derived from age, salary, or join date. The mode is not unique — Kisumu, Mombasa and Nairobi each appear twice, so "most common city" has no single answer. | Affects **one cell**: Kisumu's average is **63,500** *with* the assumption, **60,250** without it. |
+| **Diana's `City` → Kisumu** | **Assumption** | Location cannot be derived from age, salary, or join date. The mode is not unique — Kisumu, Mombasa and Nairobi each appear twice, so "most common city" has no single answer. | Affects **two metrics**: Kisumu's average is **63,500** *with* the assumption, **60,250** without it, and its headcount is **3 of 9** with it but **2** without — which drops it into a three-way tie with Nairobi and Mombasa. |
 | **ID 9's `Name` → "Jamal"** | **Placeholder** | Names carry no analytical weight — no calculation touches this field. | **None.** No metric depends on it. |
 
-**What survives either way.** Total salary **554,500** · mean **61,611** · median **59,500** · the **145%** cleaning finding · the **outlier detection** — all identical regardless of either assumption. Only Kisumu's city average moves.
+**What survives either way.** Total salary **554,500** · mean **61,611** · median **59,500** · the **145%** cleaning finding · the **outlier detection** · the **hiring trend** — all identical regardless of either assumption. Only Kisumu's city average and headcount move.
+
+**What does *not* survive it.** "Kisumu has the largest headcount" is **not** a finding about the data — it is an artefact of the assumption. Without it, Nairobi, Mombasa and Kisumu all have 2 employees each. That is why no section of this README repeats the claim, and why the summary cards on the profile repo and the portfolio site drop it rather than repeat it unqualified.
 
 **If I were redoing this for a real stakeholder:** I would leave both fields as `Unknown`, exclude Diana from the city comparison, and report **8 of 9** employees against location. On a nine-row dataset that costs almost nothing, and it removes the only judgment call in the pipeline.
 
