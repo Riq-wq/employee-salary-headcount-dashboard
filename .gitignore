@@ -26,5 +26,14 @@ desktop.ini
 ~$*
 *.tmp
 
+# ---- Local backups (never commit these) ----
+*.bak
+*.orig
+*.rej
+
+# ---- Anaconda Navigator artefacts ----
+# Created when a project is opened via Anaconda Navigator; not part of the repo.
+anaconda_projects/
+
 # ---- Data (uncomment if you don't want raw data in the repo) ----
 # data/*.csv
