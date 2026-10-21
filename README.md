@@ -100,7 +100,8 @@ The notebook is the learning artefact — it shows the reasoning step by step. `
 ```bash
 python scripts/pipeline.py          # clean -> validate -> load (one command)
 python scripts/checks.py            # validate the data on disk, no writes
-python scripts/run_scheduled.py     # what the scheduler calls: pipeline + log file
+python scripts/run_scheduled.py     # what the scheduler calls: pipeline + log + history
+python scripts/run_scheduled.py --no-commit   # run without recording the history
 ```
 
 **Stages**
@@ -128,7 +129,7 @@ The clearest justification for this layer: the raw file originally contained `Ag
 | **Structural** — true for any correct dataset | no nulls · ages 18–70 · salaries in range · every defect repaired · IDs 1..N | scale freely; no expectation to update |
 | **Count** — true for one particular dataset | row counts, headline totals, duplicates dropped | compared to the **previous successful run** rather than fixed |
 
-Adding an employee is therefore accepted and **reported**. Removing rows is **blocked** — data disappearing is almost always a defect rather than a decision, so `raw: row count` and `clean: row count` fail if the set shrinks, and the salary bill may not move by more than `MAX_TOTAL_MOVE_PCT` (80%) in a single run, which is what catches a duplicated or corrupted export.
+Adding an employee is therefore accepted and **reported**. Removing rows is treated more carefully, because the two cases mean different things: a **departure is a decision** and passes (it is reported as `GONE:`), while a **truncated export is a defect** and is blocked. The rule is that a run may not lose more than `MAX_ROW_LOSS_PCT` (40%) of its rows in one go, and the salary bill may not move by more than `MAX_TOTAL_MOVE_PCT` (80%) — the latter is what catches a duplicated or corrupted export.
 
 **What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it:
 
@@ -156,6 +157,70 @@ WARNING: the cleaned CSV was edited by hand since the last run.
 ```
 
 **Which file to edit:** `data/employee dataset.csv` is the **source** — edit it, and the row flows through to the cleaned CSV, MySQL, the PDF report and the dashboard. `data/employee_dataset_cleaned.csv` is **output** — it is regenerated on every run and anything written there by hand is discarded.
+
+### 📜 Where the history lives
+
+Three different questions get three different answers, in three different places.
+
+| Question | Answer | Committed? |
+| --- | --- | --- |
+| *What did each run do?* | `logs/pipeline_<timestamp>.log` | ❌ local only (git-ignored) |
+| *How did the numbers change over time?* | **`git log` on the state file** | ✅ yes — this is the record |
+| *When was this specific row last written?* | `last_updated` column in MySQL | in the database |
+
+**The git log is the history.** A state file on its own is only a *latest snapshot* — each run overwrites the last, so the history would be gone. So a successful run commits that file to git, and the commit log becomes the audit trail:
+
+```
+$ git log --oneline -- data/.pipeline_state.json
+Run 2026-10-22 06:00 - 10 rows, total 631,000
+Run 2026-10-21 06:00 - 9 rows, total 554,500
+```
+
+Each message carries the headline numbers, and the people who joined or left:
+
+```
+Run 2026-10-22 06:00 - 10 rows, total 631,000
+
+rows   : 10
+total  : 631,000
+mean   : 63,100
+median : 61,000
+
+joined : Kirau
+
+Recorded automatically by scripts/run_scheduled.py
+```
+
+A run where nothing changed says so, so a routine run is distinguishable from a change in the log:
+
+```
+Run 2026-10-21 06:00 - 9 rows, total 554,500
+
+rows   : 9
+total  : 554,500
+mean   : 61,611
+median : 59,500
+
+no data change since the last run
+
+Recorded automatically by scripts/run_scheduled.py
+```
+
+Any point in time can be inspected directly:
+
+```bash
+git show <commit>:data/.pipeline_state.json
+```
+
+**Three rules keep that automatic commit safe.**
+
+1. **Only the state file is staged.** Unrelated work in progress in the working tree is left completely alone.
+2. **A failed run commits nothing.** The state file is only updated after the pipeline has already succeeded, so the recorded history always matches data that actually exists. A run that fails the data-quality gate leaves both the file and the log untouched.
+3. **It never pushes unreviewed work.** The push only happens when the local branch is level with its remote. If there are local commits that have not been reviewed, the history is still recorded locally and the push is skipped with a note.
+
+If git is unavailable, misconfigured or offline, the run still counts as a success — history is a nice-to-have; the pipeline's job is the data.
+
+**The logs are the debugging layer, not the history.** Each run writes `logs/pipeline_<timestamp>.log` with the full check output, exit code and duration, and the folder keeps the 30 most recent files. They are git-ignored on purpose: they are machine output for diagnosing a failure, and the durable record belongs in git.
 
 The numbers in this README describe the **nine-employee snapshot** the analysis was published on. They remain true of that snapshot; the state file is what keeps the current totals honest once the data grows.
 
@@ -254,7 +319,7 @@ employee-salary-headcount-dashboard/
 ├── data/
 │   ├── employee dataset.csv                       # raw HR export (10 rows, messy) - the source
 │   ├── employee_dataset_cleaned.csv               # cleaned output (9 rows) - regenerated each run
-│   └── .pipeline_state.json                       # last successful run, for change reporting
+│   └── .pipeline_state.json                       # last successful run, and the run history (committed)
 ├── dashboard/
 │   └── Employee salary dashboard.pbix             # Power BI file
 ├── notebooks/
@@ -272,7 +337,7 @@ employee-salary-headcount-dashboard/
 │   ├── checks.py                                  # 14 data-quality checks
 │   ├── state.py                                   # run-over-run change detection
 │   ├── incremental.py                             # insert/update/skip instead of replace
-│   ├── run_scheduled.py                           # pipeline + log file + exit codes
+│   ├── run_scheduled.py                           # pipeline + log file + exit codes + history commit
 │   ├── run_scheduled.ps1                          # Task Scheduler entry point
 │   └── register_task.ps1                          # creates/removes the daily task
 ├── sql/
@@ -284,7 +349,11 @@ employee-salary-headcount-dashboard/
 └── README.md
 ```
 
-`logs/` is created at runtime by the scheduled runner and is git-ignored. `data/.pipeline_state.json` **is** committed: it records the last successful run so the next one can report what changed, and committing it makes that history auditable in git.
+`logs/` is created at runtime by the scheduled runner and is git-ignored — it is the debugging layer, not the record. `data/.pipeline_state.json` **is** committed, and a successful run commits it automatically, so the history is the git log:
+
+```bash
+git log --oneline -- data/.pipeline_state.json
+```
 
 ---
 
