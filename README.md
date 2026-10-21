@@ -77,14 +77,14 @@ A dashboard that hides its own gaps is worse than no dashboard. Two values in th
 
 ```mermaid
 flowchart LR
-    A[("📄 Raw HR CSV")] --> B["🐍 Python / Pandas<br/>Clean & Transform"]
-    B --> V{"✅ Data-Quality<br/>Checks"}
-    V -->|fail| X["🛑 Stop<br/>nothing written"]
-    V -->|pass| C[("🗄️ MySQL<br/>incremental load")]
-    C --> D["🧮 SQL Queries<br/>Business Logic"]
-    D --> E["📊 Power BI + DAX<br/>KPI Cards & Slicers"]
-    E --> F["📑 ReportLab<br/>Automated PDF Report"]
-    S["⏰ Task Scheduler<br/>daily 06:00"] -.->|runs| B
+    A[(Raw HR CSV)] --> B[Python / Pandas<br/>Clean and Transform]
+    B --> V{Data-Quality<br/>Checks}
+    V -->|fail| X[Stop<br/>nothing written]
+    V -->|pass| C[(MySQL<br/>incremental load)]
+    C --> D[SQL Queries<br/>Business Logic]
+    D --> E[Power BI + DAX<br/>KPI Cards and Slicers]
+    E --> F[ReportLab<br/>Automated PDF Report]
+    S[Task Scheduler<br/>daily 06:00] -.->|runs| B
 ```
 
 **Why this order?** Each stage does one job well: Python for messy cleaning, SQL for reliable aggregation, Power BI for the visual layer, and ReportLab for a shareable report that doesn't require opening a BI tool.
