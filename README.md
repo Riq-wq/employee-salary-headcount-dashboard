@@ -110,7 +110,7 @@ python scripts/run_scheduled.py --no-commit   # run without recording the histor
 | --- | --- | --- |
 | 1 | Read | raw HR export → DataFrame |
 | 2 | Clean | dedupe, impute, correct outliers, renumber IDs |
-| 3 | **Validate** | 14 checks; **fails the run on any mismatch** |
+| 3 | **Validate** | 15 checks; **fails the run on any mismatch** |
 | 4 | Write + Load | cleaned CSV, then incremental load into MySQL |
 
 **The checks (`scripts/checks.py`)** work in two directions:
@@ -157,6 +157,57 @@ WARNING: the cleaned CSV was edited by hand since the last run.
 ```
 
 **Which file to edit:** `data/employee dataset.csv` is the **source** — edit it, and the row flows through to the cleaned CSV, MySQL, the PDF report and the dashboard. `data/employee_dataset_cleaned.csv` is **output** — it is regenerated on every run and anything written there by hand is discarded.
+
+### ✏️ Editing the source file safely
+
+The source is a CSV, so the natural move is to open it in Excel. That works — but **Excel reads dates in its own regional order, and this machine is set to month-first.** The file is **day-first** (`dd/mm/yyyy`), so a date you type can be silently reinterpreted:
+
+| you type | Excel reads it as | the file ends up with |
+| --- | --- | --- |
+| `01/06/2025` | 6 January 2025 | `06/01/2025` — five months out |
+| `15/06/2025` | 15 June 2025 | `15/06/2025` — fine (the day is above 12) |
+
+Excel opens the existing dates correctly, so a plain open-and-save looks perfectly normal afterwards. And the gate **cannot** catch this one: `06/01/2025` is a perfectly valid day-first date, so no check on the data can tell it apart from a date that was always meant to be 6 January. The fix has to happen *before* the date is typed.
+
+**So edit the file with the safe editor:**
+
+```bash
+python scripts/edit_source.py
+```
+
+It opens the file in Excel with three things already handled:
+
+- the `JoinDate` column is **Text**, so a date is saved exactly as you type it;
+- the numeric columns are pinned to a plain integer format, so a large salary can never come out as `1.2E+06`;
+- Excel's autocorrect and autocomplete are switched off for the session, so it cannot change your capitalisation or complete a city name behind your back.
+
+It backs the file up first, and after you save and close it verifies the result and prints exactly what changed. If the file comes back broken, the backup is restored and nothing is lost.
+
+```
+Source: data\employee dataset.csv  (10 rows)
+Backup : data\.edit_backup\employee dataset 2026-10-21 18:42:11.csv
+
+  Excel is open and ready to edit.
+  The JoinDate column is TEXT, so a date is saved exactly as you
+  type it (dd/mm/yyyy - day first, like the rest of the file).
+
+  Edit, press Ctrl+S, then close Excel. This script will verify
+  the file and tell you what changed.
+
+Verifying the file...
+
+OK - the file is a valid source file.
+
+What changed:
+  added   : 11 Zawadi
+```
+
+**If you edit it some other way**, the gate catches the damage it *can* see — a date written as an Excel serial, in ISO format, with dashes, unpadded, with a two-digit year, or as an impossible date:
+
+```
+[FAIL] raw: date format is dd/mm/yyyy    2 JoinDate value(s) are not dd/mm/yyyy: row 2: '45672'
+PIPELINE STOPPED - data-quality checks failed
+```
 
 ### 📜 Where the history lives
 
@@ -345,9 +396,10 @@ employee-salary-headcount-dashboard/
 │   └── generate_report.py                         # regenerates the PDF from the data
 ├── scripts/                                       # automation (see Automation above)
 │   ├── pipeline.py                                # clean -> validate -> load, one command
-│   ├── checks.py                                  # 14 data-quality checks
+│   ├── checks.py                                  # 15 data-quality checks
 │   ├── state.py                                   # run-over-run change detection
 │   ├── incremental.py                             # insert/update/skip instead of replace
+│   ├── edit_source.py                             # open the source CSV in Excel, safely
 │   ├── run_scheduled.py                           # pipeline + log file + exit codes + history commit
 │   ├── run_scheduled.ps1                          # Task Scheduler entry point
 │   └── register_task.ps1                          # creates/removes the daily task
@@ -440,9 +492,10 @@ python reports/generate_report.py
 | **Data modeling & DAX measures** | Power BI |
 | **Automated reporting** | ReportLab |
 | **Pipeline automation** — one-command run, idempotent re-runs | `scripts/pipeline.py` |
-| **Data-quality engineering** - 14 checks that stop the run on bad data | `scripts/checks.py` |
+| **Data-quality engineering** - 15 checks that stop the run on bad data | `scripts/checks.py` |
 | **Change detection** - run-over-run diffing, growth reported not silent | `scripts/state.py` |
 | **Incremental loading** — insert/update/skip, audit column, safe departures | `scripts/incremental.py` |
+| **Spreadsheet-safe ingestion** — Excel round trip that cannot corrupt dates | `scripts/edit_source.py` |
 | **Job scheduling** — Task Scheduler, logging, distinct exit codes | `scripts/register_task.ps1` |
 | **End-to-end pipeline thinking** | Whole repo |
 

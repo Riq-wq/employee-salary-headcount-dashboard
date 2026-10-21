@@ -30,7 +30,9 @@ Or run this file directly to check the current data on disk:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -79,6 +81,12 @@ MAX_ROW_MOVE_PCT = 100.0      # row count may not roughly double in one run
 MAX_ROW_LOSS_PCT = 40.0
 
 REQUIRED_COLUMNS = ["EmployeeID", "Name", "Age", "City", "Salary", "JoinDate"]
+
+# The source file is edited in Excel, and Excel rewrites dates in its own
+# locale's format. The file's own convention is day-first (``dd/mm/yyyy``),
+# because that is what the PDF report parses (``%d/%m/%Y``). This pattern is
+# what the gate expects to see on every JoinDate value.
+DATE_PATTERN = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 
 # The two documented assumptions. Both are stated as such in the README, and
 # both are asserted here so that an undocumented change would fail the run.
@@ -421,6 +429,57 @@ def check_raw_defects(raw: pd.DataFrame) -> Result:
                   f"invalid_ages={invalid_ages}, salary_typos={typos}")
 
 
+def check_date_format(raw: pd.DataFrame) -> Result:
+    """Every JoinDate must still be text in ``dd/mm/yyyy`` form.
+
+    Why this check exists
+    ---------------------
+    The source file is edited in Excel. Excel is a spreadsheet application,
+    and a spreadsheet application will happily reinterpret a date you typed
+    using its OWN locale and then write it back in that locale's format.
+
+    On an en-US machine, typing ``01/06/2025`` into a General-formatted cell
+    means *6 January 2025* to Excel, and Excel writes it back as
+    ``06/01/2025``. In a file where every other date is day-first, that is a
+    silent five-month error - and it reaches the database, the report and the
+    dashboard looking entirely plausible.
+
+    This check cannot catch that particular mistake, because ``06/01/2025`` is
+    a perfectly valid day-first date. What it CAN catch is every OTHER way a
+    spreadsheet application rewrites dates: ISO format (``2025-06-01``),
+    dashes, unpadded days, two-digit years, and dates whose day/month are
+    impossible in either reading.
+
+    The real protection is to edit the file through ``scripts/edit_source.py``,
+    which formats the date column as Text before you type into it, so the
+    round trip is lossless. This check is the backstop for the cases where
+    somebody edits the file without using that script.
+    """
+    problems = []
+    bad = []
+
+    for idx, value in raw["JoinDate"].items():
+        text = str(value).strip()
+        if not DATE_PATTERN.match(text):
+            bad.append(f"row {idx + 2}: {text!r}")
+            continue
+        try:
+            datetime.strptime(text, "%d/%m/%Y")
+        except ValueError:
+            bad.append(f"row {idx + 2}: {text!r} (not a real date)")
+
+    if bad:
+        shown = "; ".join(bad[:4])
+        more = f" (+{len(bad) - 4} more)" if len(bad) > 4 else ""
+        problems.append(
+            f"{len(bad)} JoinDate value(s) are not dd/mm/yyyy{more}: {shown}"
+        )
+
+    return _check("raw: date format is dd/mm/yyyy", not problems,
+                  "; ".join(problems) or
+                  f"{len(raw)} dates, all dd/mm/yyyy")
+
+
 def check_defects_are_repaired(raw: pd.DataFrame, clean: pd.DataFrame) -> Result:
     """Every documented defect is gone after cleaning.
 
@@ -460,6 +519,7 @@ def run_all_checks(raw: pd.DataFrame, clean: pd.DataFrame,
         check_schema(clean, "clean"),
         check_raw_shape(raw, previous),
         check_raw_defects(raw),
+        check_date_format(raw),
         check_duplicates_dropped(raw, clean),
         check_clean_shape(clean, previous),
         check_no_nulls(clean),

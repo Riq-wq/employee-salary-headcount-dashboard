@@ -35,6 +35,10 @@ desktop.ini
 # Written by scripts/run_scheduled.py. Local operational output, not source.
 logs/
 
+# ---- Safe-editor backups ----
+# Written by scripts/edit_source.py before it opens the source file in Excel.
+data/.edit_backup/
+
 # ---- Anaconda Navigator artefacts ----
 # Created when a project is opened via Anaconda Navigator; not part of the repo.
 anaconda_projects/
