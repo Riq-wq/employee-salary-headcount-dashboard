@@ -1,0 +1,12 @@
+# Employee Salary & Headcount Dashboard — Python dependencies
+# Install with:  pip install -r requirements.txt
+#
+# Versions are lower-bounded rather than pinned so the project keeps working
+# on newer releases. The pipeline and report generator were written against
+# these versions.
+
+pandas>=2.0
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+python-dotenv>=1.0
+reportlab>=4.0

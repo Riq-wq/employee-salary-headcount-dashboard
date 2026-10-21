@@ -78,13 +78,86 @@ A dashboard that hides its own gaps is worse than no dashboard. Two values in th
 ```mermaid
 flowchart LR
     A[("📄 Raw HR CSV")] --> B["🐍 Python / Pandas<br/>Clean & Transform"]
-    B --> C[("🗄️ MySQL<br/>Structured Storage")]
+    B --> V{"✅ Data-Quality<br/>Checks"}
+    V -->|fail| X["🛑 Stop<br/>nothing written"]
+    V -->|pass| C[("🗄️ MySQL<br/>incremental load")]
     C --> D["🧮 SQL Queries<br/>Business Logic"]
     D --> E["📊 Power BI + DAX<br/>KPI Cards & Slicers"]
     E --> F["📑 ReportLab<br/>Automated PDF Report"]
+    S["⏰ Task Scheduler<br/>daily 06:00"] -.->|runs| B
 ```
 
 **Why this order?** Each stage does one job well: Python for messy cleaning, SQL for reliable aggregation, Power BI for the visual layer, and ReportLab for a shareable report that doesn't require opening a BI tool.
+
+The **validation gate is deliberate**: if the data doesn't meet the documented expectations, the run stops *before* anything is written. A pipeline that fails loudly is more trustworthy than one that quietly emits a plausible-looking dashboard.
+
+---
+
+## ⚙️ Automation
+
+The notebook is the learning artefact — it shows the reasoning step by step. `scripts/pipeline.py` is the same logic packaged to run unattended. Both exist on purpose.
+
+```bash
+python scripts/pipeline.py          # clean -> validate -> load (one command)
+python scripts/checks.py            # validate the data on disk, no writes
+python scripts/run_scheduled.py     # what the scheduler calls: pipeline + log file
+```
+
+**Stages**
+
+| # | Stage | What happens |
+| --- | --- | --- |
+| 1 | Read | raw HR export → DataFrame |
+| 2 | Clean | dedupe, impute, correct outliers, renumber IDs |
+| 3 | **Validate** | 14 checks; **fails the run on any mismatch** |
+| 4 | Write + Load | cleaned CSV, then incremental load into MySQL |
+
+**The checks (`scripts/checks.py`)** work in two directions:
+
+| Layer | Proves |
+| --- | --- |
+| **Input** (raw) | the file contains *exactly* the 7 documented defects — no more, no fewer |
+| **Output** (clean) | 9 rows, no nulls, plausible age/salary ranges, published totals intact, assumptions unchanged |
+
+The clearest justification for this layer: the raw file originally contained `Age = -5`. That one invalid value contaminated the median, which then contaminated every imputed age. `check_age_range` now catches exactly that class of error automatically.
+
+**Incremental loading (`scripts/incremental.py`)** replaces the notebook's `if_exists="replace"`:
+
+| Situation | Action |
+| --- | --- |
+| New `EmployeeID` | INSERT |
+| Existing, values differ | UPDATE |
+| Existing, identical | SKIP — no write at all |
+| In DB but absent from source | **report, do not delete** |
+
+Replacing the table every run drops indexes and constraints, briefly leaves the table **empty**, and rewrites every row even when nothing changed. The incremental loader touches only what actually differs, and re-running with unchanged data performs **zero writes**.
+
+Rows that disappear from the source are deliberately **not deleted** — a truncated export must never be able to wipe the employee table. They are logged instead, so the discrepancy is visible rather than silent.
+
+> **Note on scale:** the same loader handles an appended history — it inserts new records and updates changed ones without touching the rest, so cost scales with the size of the change rather than the size of the table. On this nine-row export, which is *corrected* rather than *appended*, that behaviour is verifiable rather than dramatic: a re-run performs **zero writes**, which is how the correctness is confirmed rather than assumed.
+
+**Scheduling (`scripts/register_task.ps1`)** registers a daily Windows Task Scheduler job:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1          # daily 06:00
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Time 07:30
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Remove
+```
+
+Every scheduled run writes a timestamped log to `logs/` and returns a distinct exit code, so Task Scheduler's history records *why* a run failed: `0` success · `2` data-quality failure · `3` database unreachable · `4` unexpected error.
+
+**Power BI refresh is documented, not scripted.** Refreshing the `.pbix` is a GUI action in Power BI Desktop; Power BI Desktop cannot be driven headlessly from Task Scheduler. In production the equivalent is **scheduled refresh in the Power BI Service**, which runs on Microsoft's side against a published dataset and needs no local machine to be awake. Below is the accurate local picture:
+
+```
+Task Scheduler (06:00) -> run_scheduled.ps1 -> pipeline.py
+                                                 ├── clean
+                                                 ├── validate   (stops here on failure)
+                                                 ├── write CSV
+                                                 └── incremental load -> MySQL
+                                                                          |
+                                        Power BI dashboard refresh  <-----+  (manual, or
+                                        Service scheduled refresh in production)
+```
 
 ---
 
@@ -155,16 +228,29 @@ employee-salary-headcount-dashboard/
 │   │   ├── hiring_trend.png
 │   │   └── salary_by_city.png
 │   └── generate_report.py                         # regenerates the PDF from the data
+├── scripts/                                       # automation (see Automation above)
+│   ├── pipeline.py                                # clean -> validate -> load, one command
+│   ├── checks.py                                  # 14 data-quality checks
+│   ├── incremental.py                             # insert/update/skip instead of replace
+│   ├── run_scheduled.py                           # pipeline + log file + exit codes
+│   ├── run_scheduled.ps1                          # Task Scheduler entry point
+│   └── register_task.ps1                          # creates/removes the daily task
 ├── sql/
 │   └── employees queries.sql                      # business-logic queries
+├── .env.example                                   # credential template
 ├── .gitattributes                                 # keep PDFs/deck/images binary
 ├── .gitignore
+├── requirements.txt
 └── README.md
 ```
+
+`logs/` is created at runtime by the scheduled runner and is git-ignored.
 
 ---
 
 ## ▶️ How to Reproduce
+
+### Option A — one command (automated)
 
 ```bash
 # 1. Clone
@@ -172,11 +258,30 @@ git clone https://github.com/Riq-wq/employee-salary-headcount-dashboard.git
 cd employee-salary-headcount-dashboard
 
 # 2. Install Python dependencies
-pip install pandas sqlalchemy pymysql reportlab jupyter
+pip install -r requirements.txt
 
 # 3. Create the database
 mysql -u <user> -p -e "CREATE DATABASE employee_db;"
 
+# 4. Add credentials
+copy .env.example .env      # then edit .env with your MySQL values
+
+# 5. Run the whole pipeline: clean -> validate -> write CSV -> load MySQL
+python scripts/pipeline.py
+
+# 6. (optional) schedule it to run daily at 06:00
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
+```
+
+Step 5 exits `0` on success and `2` if the data fails validation, writing nothing in the failure case. You can also validate the data already on disk without writing anything:
+
+```bash
+python scripts/checks.py
+```
+
+### Option B — step by step (the learning path)
+
+```bash
 # 4. Run the cleaning notebook (cleans data + loads it into MySQL)
 jupyter notebook "notebooks/employee  data cleaning.ipynb"
 #    -> run all cells; connects via .env, loads to employee_db
@@ -190,13 +295,16 @@ mysql -u <user> -p employee_db < "sql/employees queries.sql"
 python reports/generate_report.py
 ```
 
-> **Note:** the notebook reads DB credentials from an untracked `.env` file. Create one next to the notebook with your own values — never hard-code them:
+> **Note:** DB credentials are read from an untracked `.env` file. Create one next to the notebook (or at the project root) with your own values — never hard-code them:
 > ```
 > DB_USER=<user>
 > DB_PASSWORD=<your-password>
 > DB_HOST=localhost
+> DB_PORT=3306
 > DB_NAME=employee_db
 > ```
+
+> **Power BI refresh:** refreshing the dashboard is a manual step in Power BI Desktop. It is not scripted here because Desktop has no headless mode. In production this becomes **scheduled refresh in the Power BI Service** against a published dataset.
 
 ---
 
@@ -211,6 +319,10 @@ python reports/generate_report.py
 | **Statistical testing** — Pearson correlation, r² | Age vs salary finding |
 | **Data modeling & DAX measures** | Power BI |
 | **Automated reporting** | ReportLab |
+| **Pipeline automation** — one-command run, idempotent re-runs | `scripts/pipeline.py` |
+| **Data-quality engineering** — 14 checks that stop the run on bad data | `scripts/checks.py` |
+| **Incremental loading** — insert/update/skip, audit column, safe departures | `scripts/incremental.py` |
+| **Job scheduling** — Task Scheduler, logging, distinct exit codes | `scripts/register_task.ps1` |
 | **End-to-end pipeline thinking** | Whole repo |
 
 ---
@@ -220,7 +332,8 @@ python reports/generate_report.py
 - Add **department / job-title data** to separate *pay-for-role* from *pay-for-location* — the current data can't distinguish them, which is why Nairobi's premium is ambiguous.
 - Replace the two assumed values with **real source records**, then re-run the city comparison at 9 of 9.
 - Add **salary-benchmark comparison** against external market data.
-- Scale the pipeline to a **scheduled cloud refresh** (dbt + a warehouse) as headcount grows.
+- Move the schedule to a **cloud or server environment** so the job no longer depends on one machine being switched on, with **Power BI Service scheduled refresh** replacing the manual `.pbix` refresh.
+- Add a **notification on failure** (email or Teams message) so a broken nightly run is noticed the same morning, not the next time someone opens the dashboard.
 
 ---
 

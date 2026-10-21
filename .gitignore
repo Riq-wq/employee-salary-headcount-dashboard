@@ -31,6 +31,10 @@ desktop.ini
 *.orig
 *.rej
 
+# ---- Scheduled-run logs ----
+# Written by scripts/run_scheduled.py. Local operational output, not source.
+logs/
+
 # ---- Anaconda Navigator artefacts ----
 # Created when a project is opened via Anaconda Navigator; not part of the repo.
 anaconda_projects/
