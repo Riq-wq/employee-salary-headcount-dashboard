@@ -117,9 +117,32 @@ python scripts/run_scheduled.py     # what the scheduler calls: pipeline + log f
 | Layer | Proves |
 | --- | --- |
 | **Input** (raw) | the file contains *exactly* the 7 documented defects — no more, no fewer |
-| **Output** (clean) | 9 rows, no nulls, plausible age/salary ranges, published totals intact, assumptions unchanged |
+| **Output** (clean) | no nulls, plausible age/salary ranges, IDs renumbered, assumptions unchanged, and the headline figures within a sane distance of the last run |
 
 The clearest justification for this layer: the raw file originally contained `Age = -5`. That one invalid value contaminated the median, which then contaminated every imputed age. `check_age_range` now catches exactly that class of error automatically.
+
+**The gate is growth-aware.** The first version of these checks hard-coded `9 rows` and `554,500` and rejected *any* new employee — which is a wall, not a gate, and walls get switched off. The checks are now split by kind:
+
+| Kind | Examples | Behaviour |
+| --- | --- | --- |
+| **Structural** — true for any correct dataset | no nulls · ages 18–70 · salaries in range · every defect repaired · IDs 1..N | scale freely; no expectation to update |
+| **Count** — true for one particular dataset | row counts, headline totals, duplicates dropped | compared to the **previous successful run** rather than fixed |
+
+Adding an employee is therefore accepted and **reported**. Removing rows is **blocked** — data disappearing is almost always a defect rather than a decision, so `raw: row count` and `clean: row count` fail if the set shrinks, and the salary bill may not move by more than `MAX_TOTAL_MOVE_PCT` (80%) in a single run, which is what catches a duplicated or corrupted export.
+
+**What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it:
+
+```
+Comparing to last successful run (2026-10-21T16:39:55+00:00)
+  rows     9 -> 10   (+1)
+  total    554,500 -> 631,000   (+76,500)
+  mean     61,611 -> 63,100   (+1,489)
+  median   59,500 -> 61,000   (+1,500)
+  salary bill moved +13.8%
+  NEW: Kirau
+```
+
+The numbers in this README describe the **nine-employee snapshot** the analysis was published on. They remain true of that snapshot; the state file is what keeps the current totals honest once the data grows.
 
 **Incremental loading (`scripts/incremental.py`)** replaces the notebook's `if_exists="replace"`:
 
@@ -134,7 +157,7 @@ Replacing the table every run drops indexes and constraints, briefly leaves the 
 
 Rows that disappear from the source are deliberately **not deleted** — a truncated export must never be able to wipe the employee table. They are logged instead, so the discrepancy is visible rather than silent.
 
-> **Note on scale:** the same loader handles an appended history — it inserts new records and updates changed ones without touching the rest, so cost scales with the size of the change rather than the size of the table. On this nine-row export, which is *corrected* rather than *appended*, that behaviour is verifiable rather than dramatic: a re-run performs **zero writes**, which is how the correctness is confirmed rather than assumed.
+> **Note on scale:** the loader handles an appended history — it inserts new records and updates changed ones without touching the rest, so cost scales with the size of the change rather than the size of the table. On this nine-row export, which is *corrected* rather than *appended*, that behaviour is verifiable rather than dramatic: a re-run performs **zero writes**, which is how the correctness is confirmed rather than assumed. The same applies to the gate — see **Growth-aware gate** above for what happens when rows are added.
 
 **Scheduling (`scripts/register_task.ps1`)** registers a daily Windows Task Scheduler job:
 
@@ -214,8 +237,9 @@ employee-salary-headcount-dashboard/
 ├── assets/
 │   └── dashboard.png                              # Power BI dashboard screenshot
 ├── data/
-│   ├── employee dataset.csv                       # raw HR export (10 rows, messy)
-│   └── employee_dataset_cleaned.csv               # cleaned output (9 rows)
+│   ├── employee dataset.csv                       # raw HR export (10 rows, messy) - the source
+│   ├── employee_dataset_cleaned.csv               # cleaned output (9 rows) - regenerated each run
+│   └── .pipeline_state.json                       # last successful run, for change reporting
 ├── dashboard/
 │   └── Employee salary dashboard.pbix             # Power BI file
 ├── notebooks/
@@ -231,6 +255,7 @@ employee-salary-headcount-dashboard/
 ├── scripts/                                       # automation (see Automation above)
 │   ├── pipeline.py                                # clean -> validate -> load, one command
 │   ├── checks.py                                  # 14 data-quality checks
+│   ├── state.py                                   # run-over-run change detection
 │   ├── incremental.py                             # insert/update/skip instead of replace
 │   ├── run_scheduled.py                           # pipeline + log file + exit codes
 │   ├── run_scheduled.ps1                          # Task Scheduler entry point
@@ -244,7 +269,7 @@ employee-salary-headcount-dashboard/
 └── README.md
 ```
 
-`logs/` is created at runtime by the scheduled runner and is git-ignored.
+`logs/` is created at runtime by the scheduled runner and is git-ignored. `data/.pipeline_state.json` **is** committed: it records the last successful run so the next one can report what changed, and committing it makes that history auditable in git.
 
 ---
 
@@ -320,7 +345,8 @@ python reports/generate_report.py
 | **Data modeling & DAX measures** | Power BI |
 | **Automated reporting** | ReportLab |
 | **Pipeline automation** — one-command run, idempotent re-runs | `scripts/pipeline.py` |
-| **Data-quality engineering** — 14 checks that stop the run on bad data | `scripts/checks.py` |
+| **Data-quality engineering** - 14 checks that stop the run on bad data | `scripts/checks.py` |
+| **Change detection** - run-over-run diffing, growth reported not silent | `scripts/state.py` |
 | **Incremental loading** — insert/update/skip, audit column, safe departures | `scripts/incremental.py` |
 | **Job scheduling** — Task Scheduler, logging, distinct exit codes | `scripts/register_task.ps1` |
 | **End-to-end pipeline thinking** | Whole repo |

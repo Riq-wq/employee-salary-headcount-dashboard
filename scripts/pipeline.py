@@ -42,6 +42,9 @@ from sqlalchemy import create_engine
 
 from checks import run_all_checks, DataQualityError
 from incremental import incremental_load
+from state import (
+    STATE_FILENAME, Snapshot, compare, load_state, save_state,
+)
 
 # --------------------------------------------------------------------------
 # Paths — resolved from this file, never hard-coded
@@ -49,6 +52,7 @@ from incremental import incremental_load
 ROOT = Path(__file__).resolve().parent.parent
 RAW_CSV = ROOT / "data" / "employee dataset.csv"
 CLEAN_CSV = ROOT / "data" / "employee_dataset_cleaned.csv"
+STATE_FILE = ROOT / "data" / STATE_FILENAME
 ENV_FILE = ROOT / ".env"
 
 TABLE_NAME = "employees"
@@ -185,7 +189,7 @@ def get_engine():
 # Orchestration
 # --------------------------------------------------------------------------
 def main() -> int:
-    print("Employee Salary pipeline — Level 3 (checks + incremental load)")
+    print("Employee Salary pipeline — Level 4 (growth-aware gate)")
     print("=" * 60)
 
     if not RAW_CSV.exists():
@@ -205,9 +209,15 @@ def main() -> int:
     # -- stage 3: validate --------------------------------------------------
     # Runs BEFORE anything is written. If a check fails we stop here, with the
     # cleaned CSV and the MySQL table both left as they were.
+    #
+    # The last successful run is loaded first so the count-based checks can
+    # tell growth (expected) from shrinkage (a defect). See checks.py.
+    previous = load_state(STATE_FILE)
     print("[3/4] Validating")
+    if previous is None:
+        print("      no previous run recorded — this run sets the baseline")
     try:
-        run_all_checks(raw, clean_df, verbose=True)
+        run_all_checks(raw, clean_df, verbose=True, previous=previous)
     except DataQualityError as exc:
         print()
         print("=" * 60)
@@ -216,16 +226,28 @@ def main() -> int:
         print(exc)
         return 2
 
+    # -- stage 3b: report what changed against the last successful run ------
+    current = Snapshot.from_frames(raw, clean_df)
+    drift = compare(previous, current)
+    print()
+    for line in drift.lines():
+        print(line)
+
     # -- stage 4: write + incremental load ---------------------------------
     write_clean(clean_df, CLEAN_CSV)
-    print(f"[4/4] Wrote {CLEAN_CSV.relative_to(ROOT)}")
+    print(f"\n[4/4] Wrote {CLEAN_CSV.relative_to(ROOT)}")
 
     engine = get_engine()
     print(f"      Loading into MySQL table `{TABLE_NAME}` (incremental)")
     plan = incremental_load(clean_df, engine, apply=True, verbose=True)
 
+    # Record this run as the new baseline. Done last, so a failed load never
+    # becomes the reference and silently hides the discrepancy on the next run.
+    save_state(STATE_FILE, current)
+
     print("=" * 60)
     print(f"Done — {plan.summary()}")
+    print(f"State written to {STATE_FILE.relative_to(ROOT)}")
     print("Next: refresh the Power BI dashboard (see README).")
     return 0
 

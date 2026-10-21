@@ -1,0 +1,19 @@
+{
+  "taken_at": "2026-10-21T16:46:17+00:00",
+  "raw_rows": 10,
+  "clean_rows": 9,
+  "total_salary": 554500,
+  "mean_salary": 61611,
+  "median_salary": 59500,
+  "names": [
+    "Alice",
+    "Bob",
+    "Charlie",
+    "Diana",
+    "Evan",
+    "Faith",
+    "George",
+    "Hassan",
+    "Jamal"
+  ]
+}
