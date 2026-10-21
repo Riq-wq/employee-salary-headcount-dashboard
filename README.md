@@ -249,6 +249,17 @@ powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Remove
 
 Every scheduled run writes a timestamped log to `logs/` and returns a distinct exit code, so Task Scheduler's history records *why* a run failed: `0` success · `2` data-quality failure · `3` database unreachable · `4` unexpected error.
 
+**What the scheduler can and cannot promise.** Being precise about this matters more than making the claim sound good:
+
+| Behaviour | Setting | Why |
+| --- | --- | --- |
+| Runs if the machine was off at 06:00 | `StartWhenAvailable` | a missed run happens on wake instead of being skipped silently |
+| Runs **on battery power** | `AllowStartIfOnBatteries` | Windows defaults this to *off* — without it, a laptop on battery never runs the job at all |
+| Is not killed if the charger is pulled mid-run | `DontStopIfGoingOnBatteries` | the default would stop a run halfway through |
+| Needs the user to be **signed in** | `LogonType Interactive` | deliberately avoids storing a password; the trade-off is that the job does not run while signed out |
+
+The battery defaults were a genuine bug found by testing the task rather than assuming it worked: the job sat in `Queued` forever on an unplugged laptop. The whole run takes about three seconds and writes nine rows to a local database, so fencing it off from battery power served no purpose. In production this job would move to a server under a service account, where the machine is always on and the user is never involved.
+
 **Power BI refresh is documented, not scripted.** Refreshing the `.pbix` is a GUI action in Power BI Desktop; Power BI Desktop cannot be driven headlessly from Task Scheduler. In production the equivalent is **scheduled refresh in the Power BI Service**, which runs on Microsoft's side against a published dataset and needs no local machine to be awake. Below is the accurate local picture:
 
 ```

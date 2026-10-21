@@ -111,11 +111,23 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -DontStopOnIdleEnd `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
     -MultipleInstances IgnoreNew
 
 # StartWhenAvailable  : if the machine was asleep/off at 06:00, run on wake
 #                       rather than silently skipping the day.
+# AllowStartIfOnBatteries / DontStopOnGoingOnBatteries :
+#                       Windows defaults BOTH to "on" (i.e. the task may not
+#                       start on battery, and is stopped if the machine
+#                       switches to battery mid-run). On a laptop that means
+#                       the daily run silently never happens unless the
+#                       machine happens to be plugged in at 06:00 - and the
+#                       task then dies halfway through if the charger is
+#                       pulled. The whole job takes about three seconds and
+#                       writes nine rows to a local database, so there is no
+#                       reason to fence it off from battery power.
 # ExecutionTimeLimit  : a hung run is killed rather than left wedged.
 # MultipleInstances   : a slow run must not overlap its own next execution.
 
