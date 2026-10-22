@@ -279,8 +279,9 @@ def wait_until_closed(wb) -> None:
     while True:
         time.sleep(1)
         try:
-            if bool(wb.Closed):
-                return
+            # Check if workbook is still accessible (accessing any property will
+            # raise an exception if the workbook is closed)
+            _ = wb.Name
         except Exception:
             return
 
