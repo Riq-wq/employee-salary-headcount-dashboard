@@ -7,7 +7,7 @@ To run the data pipeline manually, execute:
 C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\scripts\run_scheduled.py"
 
 This will:
-- Clean the raw CSV (14 rows → 13, drop duplicate, repair 2 digit slips)
+- Clean the raw CSV (12 rows → 11, drop duplicate, repair 2 digit slips)
 - Impute 3 values with median (Bob age 30→29, Faith age -5→29, Charlie salary 61,000→59,500)
 - Run 15 data-quality checks (stops on failure, nothing written)
 - Write cleaned CSV, load MySQL incrementally
@@ -15,8 +15,8 @@ This will:
 - Exit 0 on success; non-zero on failure (publishes nothing)
 
 After a successful run, these artifacts are updated automatically:
-- data/employee_dataset_cleaned.csv          (13 clean rows)
-- data/.pipeline_state.json                   (raw 14 / clean 13 / total 836,500 / mean 64,346 / median 61,500)
+- data/employee_dataset_cleaned.csv          (11 clean rows)
+- data/.pipeline_state.json                   (raw 12 / clean 11 / total 679,500 / mean 61,773 / median 59,500)
 
 NOTE: Charts, PDF, and PPTX are NOT updated by the pipeline — see STEP 2.
 
@@ -61,21 +61,21 @@ git log --oneline -- data/.pipeline_state.json
 Shows the last successful run message. Branch is 6 ahead of origin/main; push is skipped.
 
 
-=== KEY FIGURES (13-employee snapshot, London at Eldoret) ===
+=== KEY FIGURES (11-employee snapshot) ===
 --------------------------------------------------------------
-Clean rows: 13 | Raw rows: 14 | Total salary: KES 836,500
-Mean: KES 64,346 | Median: KES 61,500
+Clean rows: 11 | Raw rows: 12 | Total salary: KES 679,500
+Mean: KES 61,773 | Median: KES 59,500
 
-City averages (13 employees):
-  Kisumu:     4 employees, KES 66,875
-  Mombasa:    3 employees, KES 66,667
+City averages (11 employees):
+  Kisumu:     4 employees, KES 66,375
   Nairobi:    3 employees, KES 65,000
-  Eldoret:    2 employees, KES 63,000 (Faith + London)
+  Mombasa:    2 employees, KES 60,000
+  Eldoret:    1 employee,  KES 51,000
   Nakuru:     1 employee,  KES 48,000
 
 Diana's city is Kisumu (disclosed assumption, never 'mode')
-Both Tukey fences published: pooled 108,000 / leave-one-out 91,125
-88% inflation if left uncleaned (raw mean 120,962 vs cleaned 64,346)
+Both Tukey fences published: pooled 98,500 / leave-one-out 88,500
+109% inflation if left uncleaned (raw mean 128,864 vs cleaned 61,773)
 
 
 === GROWTH-AWARE PIPELINE ===
