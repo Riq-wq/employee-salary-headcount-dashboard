@@ -484,6 +484,18 @@ python scripts/pipeline.py
 powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
 ```
 
+### Option C — safe data editing (recommended)
+
+```bash
+# Open the CSV in Excel with protections (dates as Text, numeric columns pinned, autocorrect off)
+python scripts/edit_source.py
+#   → Excel opens → make changes → Ctrl+S → close Excel
+#   → script verifies and reports changes
+
+# Then run the pipeline (or wait for 06:00 scheduled task)
+python scripts/run_scheduled.py
+```
+
 Step 5 exits `0` on success and `2` if the data fails validation, writing nothing in the failure case. You can also validate the data already on disk without writing anything:
 
 ```bash

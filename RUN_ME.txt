@@ -1,4 +1,11 @@
-=== COMPLETE WORKFLOW (TWO STEPS) ===
+=== COMPLETE WORKFLOW (THREE STEPS) ===
+
+STEP 0 — SAFE EDIT (recommended before any change):
+---------------------------------------------------
+C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\scripts\edit_source.py"
+#   → Excel opens with protections (JoinDate as Text, numeric columns pinned, autocorrect off)
+#   → Make changes → Ctrl+S → Close Excel
+#   → Script verifies and reports changes
 
 STEP 1 — DATA PIPELINE (auto-updates CSV, DB, git state):
 ----------------------------------------------------------
