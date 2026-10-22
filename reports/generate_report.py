@@ -6,7 +6,10 @@ Recomputes every statistic directly from the raw and cleaned datasets, then
 renders ``reports/Employee_Salary_Dashboard_Report.pdf``.
 
 Nothing in the report is hard-coded: change the data, re-run this script and
-the numbers, tables and insights all update with it.
+the numbers, tables, charts and insights all update with it. The three charts
+are rebuilt from the same cleaned CSV before the PDF is rendered (see
+``make_charts.py``), so the report can never pair a chart from one run with
+tables from another.
 
     python reports/generate_report.py
 """
@@ -15,9 +18,15 @@ from __future__ import annotations
 
 import csv
 import statistics
+import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+
+# ``make_charts.py`` sits next to this file. It is imported rather than run
+# as a subprocess, so the charts and the tables are guaranteed to be built
+# from the same rows in the same run.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -34,6 +43,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+import make_charts  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Paths
@@ -95,6 +106,167 @@ def load(path: Path) -> list[dict]:
 def as_int(value: str) -> int | None:
     value = (value or "").strip()
     return int(value) if value else None
+
+
+# --------------------------------------------------------------------------
+# Defects in the raw export
+#
+# The report used to carry a hand-written list of seven defects. That suited
+# one dataset and quietly went wrong on the next: a new defect in the source
+# simply never appeared in the report. The functions below read the raw
+# export instead, so the count and the table always describe the file they
+# are reporting on.
+# --------------------------------------------------------------------------
+SALARY_MIN, SALARY_MAX = 10_000, 500_000   # the band the cleaner repairs against
+AGE_FLOOR = 0                              # a negative age is invalid data
+
+
+def digit_slip(value: int) -> int | None:
+    """The repaired value if ``value`` is a one-digit slip, else None.
+
+    Mirrors ``repair_salary_digit_slip`` in ``scripts/pipeline.py``: undo one
+    power of ten, but only when the result lands back inside the band.
+    """
+    if value % 10 != 0:
+        return None
+    candidate = value / 10 if value > SALARY_MAX else value * 10
+    return int(candidate) if SALARY_MIN <= candidate <= SALARY_MAX else None
+
+
+def imputed_medians(raw: list[dict]) -> tuple[int, int]:
+    """The two values the pipeline imputes with, recomputed from the raw file.
+
+    Mirrors ``scripts/pipeline.py`` so the report can state the number it
+    actually used. Quoting the median of the *cleaned* data instead - which
+    is what this used to do - is a different quantity that only happened to
+    agree, and it stops agreeing the moment the population changes.
+    """
+    deduped: list[dict] = []
+    seen = set()
+    for r in raw:
+        key = (r["Name"], r["Age"], r["City"], r["Salary"], r["JoinDate"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+
+    valid_ages = [a for a in (as_int(r["Age"]) for r in deduped)
+                   if a is not None and a >= AGE_FLOOR]
+    median_age = int(round(float(statistics.median(valid_ages))))
+
+    repaired = []
+    for r in deduped:
+        salary = as_int(r["Salary"])
+        if salary is None:
+            continue
+        if not (SALARY_MIN <= salary <= SALARY_MAX):
+            fixed = digit_slip(salary)
+            if fixed is not None:
+                salary = fixed
+        repaired.append(salary)
+    median_salary = int(round(statistics.median(repaired)))
+
+    return median_age, median_salary
+
+
+def raw_defects(raw: list[dict], median_age: int, median_salary: int) -> list[tuple[str, str, str]]:
+    """Every defect in the raw export, found by reading the file.
+
+    Returns (issue, affected record, resolution) for each defect in a stable
+    order, so the headline count and the table can never disagree.
+    """
+    out: list[tuple[str, str, str]] = []
+
+    # --- duplicate rows -------------------------------------------------
+    groups: dict[tuple, list[dict]] = {}
+    for r in raw:
+        key = (r["Name"], r["Age"], r["City"], r["Salary"], r["JoinDate"])
+        groups.setdefault(key, []).append(r)
+    for members in groups.values():
+        if len(members) > 1:
+            ids = ", ".join(f"ID {m['EmployeeID']}" for m in members)
+            out.append((
+                "Duplicate employee records",
+                f"{ids} &#8212; {members[0]['Name']}",
+                "Dropped the duplicate. Keeping it would double-count headcount and payroll.",
+            ))
+
+    # --- missing name ---------------------------------------------------
+    for r in raw:
+        if not r["Name"].strip():
+            out.append((
+                "Missing employee name",
+                f"EmployeeID {r['EmployeeID']} &#8212; name blank",
+                "Filled with the placeholder <b>&#8216;Jamal&#8217;</b>. Names are not statistically "
+                "recoverable; this is an <b>assumption</b> and carries no analytical weight.",
+            ))
+
+    # --- missing age ----------------------------------------------------
+    for r in raw:
+        if not r["Age"].strip():
+            out.append((
+                "Missing age values",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} age empty",
+                f"Imputed with the median age ({median_age}), which is robust to outliers.",
+            ))
+
+    # --- invalid age ----------------------------------------------------
+    for r in raw:
+        age = as_int(r["Age"])
+        if age is not None and age < AGE_FLOOR:
+            out.append((
+                "Invalid negative age",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} age = {age}",
+                f"Treated as missing, then filled with the same median age ({median_age}) and "
+                "rounded to whole years.",
+            ))
+
+    # --- missing salary -------------------------------------------------
+    for r in raw:
+        if not r["Salary"].strip():
+            out.append((
+                "Missing salary value",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} salary blank",
+                f"Imputed with the median salary (KES {median_salary:,}). The mean is unusable for "
+                "this purpose because the digit slips in the same column would dominate it.",
+            ))
+
+    # --- missing city ----------------------------------------------------
+    for r in raw:
+        if not r["City"].strip():
+            out.append((
+                "Missing city value",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} city empty",
+                "Filled with <b>Kisumu</b> as a <b>disclosed assumption, not a recovery</b>. The export "
+                "holds no evidence for any particular city, and every Kisumu figure in this report "
+                "moves if the choice is wrong. See Limitations.",
+            ))
+
+    # --- digit slips ------------------------------------------------------
+    for r in raw:
+        salary = as_int(r["Salary"])
+        if salary is None or SALARY_MIN <= salary <= SALARY_MAX:
+            continue
+        fixed = digit_slip(salary)
+        direction = "one digit too many" if salary > SALARY_MAX else "one digit too few"
+        if fixed is None:
+            out.append((
+                f"Salary outside the plausible range ({direction})",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} salary KES {salary:,}",
+                "Left exactly as it is: undoing one power of ten lands outside the plausible band, so "
+                "no repair can be proven. The range check stops the run for a human to decide.",
+            ))
+        else:
+            out.append((
+                f"Salary digit slip ({direction})",
+                f"EmployeeID {r['EmployeeID']} &#8212; {r['Name']} salary KES {salary:,}",
+                f"Repaired to KES {fixed:,} by shifting one power of ten "
+                f"({'divided by 10' if salary > SALARY_MAX else 'multiplied by 10'}) &#8212; which "
+                "lands back inside the plausible band. The repair is reported in the run output, "
+                "never silent.",
+            ))
+
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -252,6 +424,10 @@ def build() -> Path:
         row["Salary"] = as_int(row["Salary"])
         row["Age"] = as_int(row["Age"])
 
+    # Rebuild the three charts from these exact rows before rendering, so the
+    # PDF can never show a chart from an earlier run beside today's tables.
+    make_charts.build_all(clean)
+
     salaries = [r["Salary"] for r in clean]
     ages = [r["Age"] for r in clean]
 
@@ -299,6 +475,29 @@ def build() -> Path:
     # --- payroll ramp --------------------------------------------------
     payroll = payroll_by_month(clean)
 
+    # --- what the cleaner actually did, read back from the raw file -----
+    median_age, median_salary_imputed = imputed_medians(raw)
+    defects = raw_defects(raw, median_age, median_salary_imputed)
+    diana_raw_id = next((r["EmployeeID"] for r in raw if r["Name"] == "Diana"), "?")
+
+    # --- outlier status depends on the sample --------------------------
+    # Two views, and both are reported: the fence over the whole set, and the
+    # fence over the rest of the team with the top earner left out. A pooled
+    # fence on its own can make a genuine standout look ordinary simply
+    # because more ordinary salaries were added to the set.
+    top_person = max(clean, key=lambda r: r["Salary"])
+    rest = [r["Salary"] for r in clean if r["EmployeeID"] != top_person["EmployeeID"]]
+    rest_fence = tukey_fences(rest)[3] if len(rest) >= 4 else fence
+    outlier_clause = ("no employee is flagged against it" if not outliers
+                      else f"{', '.join(r['Name'] for r in outliers)} is flagged against it")
+    slip_count = sum(1 for issue, _, _ in defects if "digit slip" in issue)
+    slip_phrase = ("one digit slip in the salary column" if slip_count == 1
+                   else f"{slip_count} digit slips in the salary column")
+
+    # --- the year the hiring trend covers --------------------------------
+    years = sorted({datetime.strptime(r["JoinDate"], "%d/%m/%Y").year for r in clean})
+    year_caption = str(years[0]) if len(years) == 1 else f"{years[0]}&#8211;{years[-1]}"
+
     # ==================================================================
     story: list = []
 
@@ -323,7 +522,7 @@ def build() -> Path:
     wf = [[Paragraph(x, CELL_W) for x in ["Stage", "Tool", "Purpose"]]]
     for stage, tool, purpose in [
         ("Data Cleaning", "Python (Pandas, NumPy)",
-         "Remove duplicates, handle nulls, fix invalid ages, cap salary outliers"),
+         "Remove duplicates, handle nulls, fix invalid ages, repair salary digit slips"),
         ("Storage", "MySQL", "Persist the cleaned dataset for querying and reporting"),
         ("Querying", "SQL", "Aggregate and rank employees by salary, city and hire date"),
         ("Visualization", "Power BI", "Interactive dashboard with KPI cards, charts and slicers"),
@@ -334,40 +533,25 @@ def build() -> Path:
 
     story += band("Data Cleaning Summary")
     story += [Paragraph(
-        f"The raw export contained <b>7 data defects</b> (plus one date-format issue affecting every row). "
-        "Each was resolved deliberately and documented, never silently.", BODY)]
+        f"The raw export contained <b>{len(defects)} data defects</b> (plus one date-format "
+        "standardisation applied to every row). Each was resolved deliberately and documented, "
+        "never silently.", BODY)]
     story += [Spacer(1, 5)]
 
-    issues = [
-        ("Duplicate employee records", "Alice &#8212; exact duplicate row",
-         "Dropped the duplicate. Keeping it would double-count headcount and payroll."),
-        ("Missing employee name", "EmployeeID 9 &#8212; name blank",
-         "Filled with the placeholder <b>&#8216;Jamal&#8217;</b>. Names are not statistically "
-         "recoverable; this is an <b>assumption</b> and carries no analytical weight."),
-        ("Missing age values", "Bob &#8212; age empty",
-         f"Imputed with the median age ({int(statistics.median(ages))}), which is robust to outliers."),
-        ("Invalid negative age", "Faith &#8212; age = -5",
-         "Treated as missing, then re-filled with the median and rounded to whole years."),
-        ("Missing salary value", "Charlie &#8212; salary blank",
-         f"Imputed with the median salary (KES {int(median_salary):,}). The 900,000 typo above makes "
-         "the mean unsafe for this purpose."),
-        ("Missing city value", "Diana &#8212; city empty",
-         "Filled with <b>Kisumu</b> as an <b>assumption, not a recovery</b>. The mode is not unique "
-         "&#8212; Kisumu, Mombasa and Nairobi each appear twice &#8212; so no single &#8216;most frequent "
-         "city&#8217; exists. See Limitations."),
-        (f"Salary outlier ({len(outliers)} flagged)",
-         f"George &#8212; KES {raw_max:,} in the raw export",
-         f"Reviewed against the Tukey upper fence (KES {fence:,.0f}) and corrected to KES {high:,}."),
-        ("Inconsistent date format", "All records",
-         "Parsed as day-first dates and standardised to a single format."),
-    ]
+    issues = list(defects)
+    issues.append((
+        "Date format standardised",
+        "All records",
+        "Parsed as day-first dates and standardised to a single format, so the dates sort and "
+        "group correctly by month.",
+    ))
     tbl = [[Paragraph(x, CELL_W) for x in ["Issue Found", "Affected Record", "Resolution Applied"]]]
     for a, b, c in issues:
         tbl.append([Paragraph(a, CELL_B), Paragraph(b, CELL), Paragraph(c, CELL)])
     story += [styled_table(tbl, [38 * mm, 38 * mm, CONTENT_W - 76 * mm]), Spacer(1, 4)]
     story += [Paragraph(
         "Row IDs refer to the raw export &#8212; the cleaned file renumbers rows, so raw "
-        "ID 5 (Diana) is ID 4 there.", SMALL)]
+        f"ID {diana_raw_id} (Diana) is ID {diana_id} there.", SMALL)]
 
     # ---- page 2 ------------------------------------------------------
     story += [PageBreak()]
@@ -391,7 +575,8 @@ def build() -> Path:
 
     # ---- page 3 ------------------------------------------------------
     story += [PageBreak()]
-    chart("Hiring trend by month", "hiring_trend.png", "New hires per month, 2025", story)
+    chart("Hiring trend by month", "hiring_trend.png",
+          f"New hires per month, {year_caption}", story)
 
     ramp = " &#8594; ".join(f"<b>KES {amt:,}</b> ({m})" for m, _, amt in payroll)
     story += [Paragraph(
@@ -435,9 +620,13 @@ def build() -> Path:
          f"salary variance. {youngest['Name']}, the youngest at {youngest['Age']}, earns "
          f"KES {youngest['Salary']:,}; {oldest['Name']}, the oldest at {oldest['Age']}, earns "
          f"KES {oldest['Salary']:,} &#8212; a <b>{age_gap:.2f}&#215;</b> gap."),
-        ("<b>One statistical outlier.</b>",
-         f"George&#8217;s KES {high:,} sits above the Tukey upper fence of KES {fence:,.0f} "
-         f"(Q1 = {q1:,.0f}, Q3 = {q3:,.0f}, IQR = {iqr:,.0f}). He is the only employee flagged."),
+        ("<b>One earner the average cannot absorb.</b>",
+         f"{top_person['Name']}&#8217;s KES {high:,} is the highest salary in the set. Across all "
+         f"{len(clean)} salaries the Tukey upper fence is KES {fence:,.0f} "
+         f"(Q1 = {q1:,.0f}, Q3 = {q3:,.0f}, IQR = {iqr:,.0f}), and {outlier_clause}. "
+         f"Measured against the other {len(clean) - 1} salaries the fence falls to "
+         f"KES {rest_fence:,.0f}, and KES {high:,} still sits above it &#8212; the one figure the "
+         f"average cannot absorb."),
     ]
     for i, (lead, body) in enumerate(insights, 1):
         story += [Paragraph(
@@ -448,8 +637,8 @@ def build() -> Path:
     story += [callout(
         "THE FINDING THAT MATTERS: CLEANING CHANGED THE CONCLUSION",
         f"Computed on the raw export, average salary reads <b>KES {raw_mean:,.0f}</b>. Correctly cleaned "
-        f"it is <b>KES {mean:,.0f}</b> &#8212; an inflation of <b>{inflation:.0f}%</b>, caused by a single "
-        f"900,000 typo and one duplicated row. Left untreated, this dataset would have produced a false "
+        f"it is <b>KES {mean:,.0f}</b> &#8212; an inflation of <b>{inflation:.0f}%</b>, caused by "
+        f"{slip_phrase} and one duplicated row. Left untreated, this dataset would have produced a false "
         f"narrative about what the company pays. The cleaning step <i>is</i> the analysis.", WARN)]
     story += [Spacer(1, 9)]
 
@@ -461,9 +650,14 @@ def build() -> Path:
     tbl = [[Paragraph(x, CELL_W) for x in ["Value", "Status", "Why it is not recoverable", "Impact"]]]
     tbl.append([
         Paragraph("Diana&#8217;s City &#8594; Kisumu", CELL_B), Paragraph("Assumption", CELL),
-        Paragraph("Location cannot be derived from age, salary or join date. The mode is not unique.", CELL),
-        Paragraph(f"Kisumu averages <b>KES {kisumu_with:,.0f}</b> with the assumption, "
-                  f"<b>KES {kisumu_without:,.0f}</b> without it. No other figure moves.", CELL),
+        Paragraph("Location cannot be derived from age, salary or join date. The export holds no "
+                  "evidence for any particular city, so the value is a disclosed placeholder rather "
+                  "than a recovered fact.", CELL),
+        Paragraph(f"Kisumu averages <b>KES {kisumu_with:,.0f}</b> with the assumption and "
+                  f"<b>KES {kisumu_without:,.0f}</b> without it; its headcount reads "
+                  f"<b>{len(kisumu_rows)} of {len(clean)}</b> with it and "
+                  f"<b>{len(kisumu_rows) - 1}</b> without. Which city has the most people does not "
+                  f"change either way.", CELL),
     ])
     tbl.append([
         Paragraph("ID 9&#8217;s Name &#8594; &#8216;Jamal&#8217;", CELL_B), Paragraph("Placeholder", CELL),
@@ -475,18 +669,19 @@ def build() -> Path:
     story += [Paragraph(
         "<b>If this were a real stakeholder deliverable:</b> both fields would be left as "
         "<i>Unknown</i>, Diana excluded from the city comparison, and the location view reported at "
-        "8 of 9 employees. Total salary, mean, median, the inflation finding and the outlier detection "
-        "are identical under either choice &#8212; only the Kisumu city average moves.", BODY)]
+        f"{len(clean) - 1} of {len(clean)} employees. Total salary, mean, median, the inflation "
+        f"finding and the distribution analysis are identical under either choice &#8212; only the "
+        f"Kisumu city average and headcount move.", BODY)]
     story += [Spacer(1, 8)]
 
     story += [callout(
         "RECOMMENDATION",
         "1. Introduce age/experience-based pay bands &#8212; an r&#178; of "
         f"{r_age ** 2:.2f} says seniority is already driving pay, just informally. "
-        "2. Review the single senior outlier against market benchmarks before treating "
+        "2. Review the top earner against market benchmarks before treating "
         f"{top_city}&#8217;s average as a real signal. "
         "3. Add validation at source: a primary-key constraint, an age range check and a salary sanity "
-        "cap would have caught all 7 defects before they reached a report.", ACCENT)]
+        f"cap would have caught all {len(defects)} defects before they reached a report.", ACCENT)]
 
     # ==================================================================
     doc = SimpleDocTemplate(
