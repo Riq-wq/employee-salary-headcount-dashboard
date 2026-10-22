@@ -16,9 +16,17 @@ Design rules (deliberate, and worth saying out loud in an interview):
    resolve everything from this file's own location, so the repo runs anywhere.
 
 2. THE CLEANING LOGIC IS UNCHANGED. Same duplicate drop, same median
-   imputation, same negative-age fix, same 900,000 -> 90,000 correction, same
-   Diana-city assumption. The script must produce a cleaned CSV that is
-   byte-identical to the one the notebook produced. We verify that.
+   imputation, same negative-age fix, same Diana-city assumption. The script
+   must produce a cleaned CSV that is byte-identical to the one the notebook
+   produced. We verify that.
+
+   The one repair that DID change is George's 900,000 -> 90,000. It used to be
+   a name-bound patch ("if the name is George, set the salary to 90,000"),
+   which fixed exactly one person and left the next digit slip to fail the
+   run. It is now a structural rule: a salary outside the plausible band has
+   one power of ten undone, but only if the result lands back inside the band.
+   George's row is repaired by the general rule, so the outcome is identical
+   and every future digit slip is handled too.
 
 3. STAGES ARE SEPARATE FUNCTIONS. clean -> write -> load. Later levels wrap
    these with validation (Level 2) and incremental loading (Level 3) without
@@ -40,7 +48,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
-from checks import run_all_checks, DataQualityError
+from checks import run_all_checks, DataQualityError, SALARY_MIN, SALARY_MAX
 from incremental import incremental_load
 from state import (
     STATE_FILENAME, Snapshot, compare, file_sha256, load_state, save_state,
@@ -62,14 +70,89 @@ ID_COL = "EmployeeID"
 # --------------------------------------------------------------------------
 # Stage 1 — clean
 # --------------------------------------------------------------------------
-def clean(raw: pd.DataFrame) -> pd.DataFrame:
-    """Apply the seven documented data-quality fixes.
+def repair_salary_digit_slip(df: pd.DataFrame, repairs: list | None = None) -> pd.DataFrame:
+    """Undo a single missing or extra digit in a salary.
+
+    Why this rule exists
+    --------------------
+    The original cleaner hard-coded George's 900,000 -> 90,000 correction by
+    NAME. That worked, but it only ever fixes that one person: the next person
+    to type a digit slip fails the run, and the pipeline stops for a human.
+    A name-bound patch is not a rule, it is a lookup table.
+
+    A digit slip is a *structural* defect, so it deserves a *structural* rule:
+    a salary outside the plausible band is repaired by undoing one power of
+    ten, but only when the repaired value lands back inside the band.
+
+    The guards, in order of importance:
+
+      1. The repaired value must land inside ``[SALARY_MIN, SALARY_MAX]``.
+         900,000 / 10 = 90,000 is in band. 7,500 * 10 = 75,000 is in band.
+         300 * 10 = 3,000 is not, so that value is left alone.
+      2. The original value must end in 0. A dropped or appended zero almost
+         always leaves a trailing zero behind; 654,321 does not, so it is not
+         a slip this rule should touch.
+      3. Only one power of ten is tried. 10x covers a single digit slip.
+
+    What it deliberately does NOT do
+    --------------------------------
+    It does not repair anything it cannot prove. If no candidate lands in the
+    band, the value is left exactly as it is and the range check stops the run
+    so a human decides. A genuine out-of-band salary would be altered by this
+    rule -- that limitation is stated in the README rather than hidden.
+
+    Every repair is recorded in ``repairs`` so the run reports what it changed.
+    Silent repair would be worse than no repair: you would never know the
+    source data disagreed with the output.
+    """
+    df = df.copy()
+    if repairs is None:
+        repairs = []
+
+    for idx, value in df["Salary"].items():
+        if pd.isna(value):
+            continue
+        amount = float(value)
+        if SALARY_MIN <= amount <= SALARY_MAX:
+            continue
+        if amount % 10 != 0:
+            continue
+
+        if amount > SALARY_MAX:
+            candidate = amount / 10
+            rule = "one digit too many (divided by 10)"
+        else:
+            candidate = amount * 10
+            rule = "one digit too few (multiplied by 10)"
+
+        if not (SALARY_MIN <= candidate <= SALARY_MAX):
+            continue
+
+        df.loc[idx, "Salary"] = candidate
+        name = df.loc[idx, "Name"] if "Name" in df.columns else f"row {idx + 2}"
+        repairs.append({
+            "row": int(idx) + 2,
+            "name": name,
+            "was": int(amount),
+            "now": int(candidate),
+            "rule": rule,
+        })
+
+    return df
+
+
+def clean(raw: pd.DataFrame, repairs: list | None = None) -> pd.DataFrame:
+    """Apply the documented data-quality fixes.
 
     Readings match the notebook exactly; each step is annotated with the
     defect it repairs so the script is self-documenting.
 
-    One bug in the original notebook is deliberately NOT reproduced here — see
+    One bug in the original notebook is deliberately NOT reproduced here - see
     ``impute_median_age`` below.
+
+    ``repairs`` is an optional list that collects a record of every salary
+    value this function changed, so the caller can report the change instead
+    of making it silently.
     """
     df = raw.copy()
 
@@ -83,18 +166,22 @@ def clean(raw: pd.DataFrame) -> pd.DataFrame:
     # Blank age (Bob) and the invalid negative age (Faith, -5) -> median age.
     df = impute_median_age(df)
 
-    # Blank salary (Charlie) -> median salary. The mean is unusable here
-    # because of the 900,000 typo, which is still present at this point.
+    # Digit slips in salary (George's 900,000; any value that lost or gained
+    # a zero) -> repaired by undoing one power of ten, but only when the
+    # result lands back inside the plausible band. This runs BEFORE the
+    # median imputation below, so an unrepaired outlier cannot influence the
+    # median that is about to be used.
+    df = repair_salary_digit_slip(df, repairs)
+
+    # Blank salary (Charlie) -> median salary. The median is used, not the
+    # mean, because the mean is unusable if any outlier is still present.
     df["Salary"] = df["Salary"].fillna(df["Salary"].median())
 
     # Blank city (Diana) -> Kisumu as an ASSUMPTION. The mode is not unique.
     df["City"] = df["City"].fillna("Kisumu")
 
-    # George's 900,000 is a 10x typo: correct to 90,000, in line with his peers.
-    df.loc[df["Name"] == "George", "Salary"] = 90_000
-
     # Salary is whole KES. The median imputation above promoted the column to
-    # float, so cast back to int — otherwise the CSV reads "55000.0".
+    # float, so cast back to int - otherwise the CSV reads "55000.0".
     df["Salary"] = df["Salary"].round().astype(int)
 
     # Renumber EmployeeID sequentially after dropping the duplicate, as the
@@ -207,9 +294,19 @@ def main() -> int:
     print(f"      raw rows: {len(raw)}")
 
     # -- stage 2: clean -----------------------------------------------------
-    clean_df = clean(raw)
+    repairs: list[dict] = []
+    clean_df = clean(raw, repairs=repairs)
     print(f"[2/4] Cleaned  -> {len(clean_df)} rows "
           f"({len(raw) - len(clean_df)} duplicate removed)")
+
+    # Report every repair the cleaner made. A silent repair is worse than no
+    # repair: the source data would disagree with the output and nobody
+    # would know.
+    if repairs:
+        print(f"      {len(repairs)} salary value(s) repaired:")
+        for r in repairs:
+            print(f"        row {r['row']} ({r['name']}): "
+                  f"{r['was']:,} -> {r['now']:,}   {r['rule']}")
 
     # -- stage 3: validate --------------------------------------------------
     # Runs BEFORE anything is written. If a check fails we stop here, with the

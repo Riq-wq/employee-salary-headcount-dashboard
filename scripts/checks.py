@@ -56,16 +56,16 @@ import pandas as pd
 # successful run (see ``state.py``) and reports the movement, rather than
 # refusing to proceed. Growth is expected; silent growth is what we prevent.
 # --------------------------------------------------------------------------
-RAW_ROWS = 10                 # raw rows in the published snapshot (baseline)
-CLEAN_ROWS = 9                # clean rows in the published snapshot (baseline)
+RAW_ROWS = 11                 # raw rows in the published snapshot (baseline)
+CLEAN_ROWS = 10               # clean rows in the published snapshot (baseline)
 DUPLICATES_DROPPED = 1        # duplicates in the published snapshot (baseline)
 
 AGE_MIN, AGE_MAX = 18, 70     # plausible working ages
 SALARY_MIN, SALARY_MAX = 10_000, 500_000   # plausible monthly KES range
 
-TOTAL_SALARY = 554_500        # the published snapshot total
-MEAN_SALARY = 61_611          # the published snapshot mean
-MEDIAN_SALARY = 59_500        # the published snapshot median
+TOTAL_SALARY = 631_000        # the published snapshot total
+MEAN_SALARY = 63_100          # the published snapshot mean
+MEDIAN_SALARY = 61_000        # the published snapshot median
 
 # How far the headline numbers may move in one run before the gate objects.
 # A single new employee among nine is an ~11% row increase, so the allowance
@@ -386,7 +386,8 @@ def check_assumptions(clean: pd.DataFrame) -> Result:
 RAW_EXPECTED_NULLS = {"Name": 1, "Age": 1, "City": 1, "Salary": 1}
 RAW_EXPECTED_DUPLICATE_PAIRS = 1     # Alice appears twice
 RAW_EXPECTED_INVALID_AGES = 1        # Faith's -5
-RAW_EXPECTED_SALARY_TYPOS = 1        # George's 900,000 (>= 10x the next value)
+RAW_EXPECTED_SALARY_TYPOS = 2        # George's 900,000 (a digit too many) and
+                                     # one salary that lost a digit (too few)
 
 
 def check_raw_defects(raw: pd.DataFrame) -> Result:
@@ -416,11 +417,20 @@ def check_raw_defects(raw: pd.DataFrame) -> Result:
                         f"{RAW_EXPECTED_INVALID_AGES}")
 
     # --- salary typos ----------------------------------------------------
-    # A value >= 10x the median is treated as a magnitude typo.
-    med = raw["Salary"].median()
-    typos = int((raw["Salary"] > med * 10).sum())
+    # A value outside the plausible band is treated as a magnitude typo: one
+    # digit too many (900,000) or one digit too few (7,500).
+    #
+    # Counting only the TOP end was a real gap: a salary that lost a digit
+    # pulls the median down, so a "below 10x the median" test does not catch
+    # it and the defect reached the database looking like a very junior hire.
+    # Both ends are now measured against the same plausible band the repair
+    # rule uses.
+    typos_high = int((raw["Salary"] > SALARY_MAX).sum())
+    typos_low = int((raw["Salary"] < SALARY_MIN).sum())
+    typos = typos_high + typos_low
     if typos != RAW_EXPECTED_SALARY_TYPOS:
-        problems.append(f"{typos} salary typos (>=10x median), expected "
+        problems.append(f"{typos} salary typos (outside "
+                        f"[{SALARY_MIN}, {SALARY_MAX}]), expected "
                         f"{RAW_EXPECTED_SALARY_TYPOS}")
 
     return _check("raw: exactly the documented defects", not problems,
@@ -490,9 +500,10 @@ def check_defects_are_repaired(raw: pd.DataFrame, clean: pd.DataFrame) -> Result
     problems = []
     if int((clean["Age"] < AGE_MIN).sum()) > 0:
         problems.append("invalid age survived cleaning")
-    med = raw["Salary"].median()
-    if int((clean["Salary"] > med * 10).sum()) > 0:
-        problems.append("salary typo survived cleaning")
+    if int((clean["Salary"] < SALARY_MIN).sum()) > 0:
+        problems.append("low salary typo survived cleaning")
+    if int((clean["Salary"] > SALARY_MAX).sum()) > 0:
+        problems.append("high salary typo survived cleaning")
     if int(clean.isna().sum().sum()) > 0:
         problems.append("null survived cleaning")
     return _check("clean: all raw defects repaired", not problems,
