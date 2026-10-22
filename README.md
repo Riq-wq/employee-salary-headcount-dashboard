@@ -33,28 +33,35 @@ The raw export is small, inconsistent, and unaggregated, so it answers none of t
 | | |
 | --- | --- |
 | **Source** | Raw HR export (CSV) — deliberately messy, as in the real world |
-| **Raw rows** | 10 |
-| **Clean rows** | 9 |
+| **Raw rows** | 11 |
+| **Clean rows** | 10 |
 | **Fields** | `EmployeeID`, `Name`, `Age`, `City`, `Salary`, `JoinDate` |
 | **Coverage** | 5 Kenyan cities · Jan–May 2025 · ages 25–40 |
 
 ### 🧹 Data-Quality Issues & Cleaning Decisions
 
-The raw export contained **7 distinct problems** — enough to make any naive analysis wrong. Each was fixed deliberately and documented, never silently:
+The raw export contained **8 distinct problems** — enough to make any naive analysis wrong. Each was fixed deliberately and documented, never silently:
 
 | Row | Raw problem | Decision | Reasoning |
 | --- | --- | --- | --- |
-| `ID 2` (Bob) | `Age` blank | Imputed **29** (median age) | Median is robust to outliers; safe for a single gap |
-| `ID 3` (Charlie) | `Salary` blank | Imputed **59,500** (median salary) | The 900,000 typo makes the mean unusable — median is safer |
+| `ID 2` (Bob) | `Age` blank | Imputed **30** (median age) | Median is robust to outliers; safe for a single gap |
+| `ID 3` (Charlie) | `Salary` blank | Imputed **61,000** (median salary) | The two digit slips make the mean unusable — median is safer |
 | `ID 4` (Alice) | **Exact duplicate** of `ID 1` | **Row removed** | Same person twice would double-count headcount and salary bill |
 | `ID 5` (Diana) | `City` blank | Filled with **Kisumu** | ⚠️ **Assumption, not a recovery** — see [Limitations](#-limitations--honest-scope) |
-| `ID 7` (Faith) | `Age = -5` | Corrected to **29** | A negative age is invalid data, not a real value |
-| `ID 8` (George) | `Salary = 900,000` | Corrected to **90,000** | A 10× typo — inconsistent with the role and every peer |
+| `ID 7` (Faith) | `Age = -5` | Corrected to **30** | A negative age is invalid data, not a real value |
+| `ID 8` (George) | `Salary = 900,000` | Corrected to **90,000** | A ten-fold digit slip — inconsistent with the role and every peer |
 | `ID 9` (—) | `Name` blank | Placeholder **"Jamal"** | ⚠️ Name assumed — see [Limitations](#-limitations--honest-scope) |
+| `ID 11` (Kirauti) | `Salary = 7,500` | Corrected to **75,000** | The same class of slip the other way round — one digit lost, not one gained |
 
 > 📎 **Row IDs refer to the raw export.** The cleaned file drops the duplicate and renumbers, so raw `ID 5` (Diana) is `ID 4` in `employee_dataset_cleaned.csv` — cross-reference by name, not by number.
 
-> ⚠️ **Why this matters.** Computed on the raw data, the average salary comes out at **KES 151,111**. The true figure is **KES 61,611** — the uncleaned number is **145% too high**. A single `900,000` typo and one duplicate row are enough to make a dashboard actively mislead. This step is the analysis.
+> ⚠️ **Why this matters.** Computed on the raw data, the average salary comes out at **KES 136,750**. The true figure is **KES 63,100** — the uncleaned number is **117% too high**. Two ten-fold digit slips and one duplicate row are enough to make a dashboard actively mislead. This step is the analysis.
+
+**The digit-slip rule, and its limit.** A salary outside the plausible band `[10,000 – 500,000]` is repaired by undoing one power of ten — divided by 10 if it is too high, multiplied by 10 if it is too low — but **only** when the original ends in `0` *and* the repaired value lands back inside the band. Anything that cannot be proven that way is left exactly as it is, and the range check stops the run for a human to decide. Only one power of ten is tried, because one power of ten covers one missing or extra digit. Every repair is printed in the run output, so a repair is never applied silently.
+
+The rule was not always this general. The first version hard-coded George's `900,000 → 90,000` correction **by name**, which fixed exactly one person and left every future digit slip to fail the run. A digit slip is a structural defect, so it now gets a structural rule.
+
+> ⚠️ **The limit worth knowing:** the rule cannot tell a genuine high salary from a typo. A real `600,000` would be rewritten to `60,000`. That is why the guard is deliberately narrow rather than a blanket "divide by 10 anything above the band", and why the repair is always reported. It is a **repair, not a cap** — and a cap would silently change real data in exactly the same way.
 
 ---
 
@@ -64,14 +71,14 @@ A dashboard that hides its own gaps is worse than no dashboard. Two values in th
 
 | Value | Status | Why it is not recoverable | Impact |
 | --- | --- | --- | --- |
-| **Diana's `City` → Kisumu** | **Assumption** | Location cannot be derived from age, salary, or join date. The mode is not unique — Kisumu, Mombasa and Nairobi each appear twice, so "most common city" has no single answer. | Affects **two metrics**: Kisumu's average is **63,500** *with* the assumption, **60,250** without it, and its headcount is **3 of 9** with it but **2** without — which drops it into a three-way tie with Nairobi and Mombasa. |
+| **Diana's `City` → Kisumu** | **Assumption** | Location cannot be derived from age, salary, or join date, and the export holds no evidence for any particular city — so the value is a disclosed placeholder, not a recovered fact. | Affects **two metrics**: Kisumu's average is **66,750** *with* the assumption, **65,667** without it, and its headcount is **4 of 10** with it but **3** without — though Kisumu still has the most people either way. |
 | **ID 9's `Name` → "Jamal"** | **Placeholder** | Names carry no analytical weight — no calculation touches this field. | **None.** No metric depends on it. |
 
-**What survives either way.** Total salary **554,500** · mean **61,611** · median **59,500** · the **145%** cleaning finding · the **outlier detection** · the **hiring trend** — all identical regardless of either assumption. Only Kisumu's city average and headcount move.
+**What survives either way.** Total salary **631,000** · mean **63,100** · median **61,000** · the **117%** cleaning finding · the **distribution analysis** · the **hiring trend** — all identical regardless of either assumption. Only Kisumu's city average and headcount move.
 
-**What does *not* survive it.** "Kisumu has the largest headcount" is **not** a finding about the data — it is an artefact of the assumption. Without it, Nairobi, Mombasa and Kisumu all have 2 employees each. That is why no section of this README repeats the claim, and why the summary cards on the profile repo and the portfolio site drop it rather than repeat it unqualified.
+**What does *not* survive it.** The Kisumu *headcount number* — **4 of 10** with the assumption, **3** without — is part fact, part assumption, so this README does not publish it as a clean finding. The *ranking* does survive it: take Diana out of the dataset entirely and Kisumu still has the most people (3, ahead of Nairobi's 2), because the other three Kisumu employees are genuinely Kisumu. So "Kisumu is the largest location" holds; "Kisumu has 4 employees" does not.
 
-**If I were redoing this for a real stakeholder:** I would leave both fields as `Unknown`, exclude Diana from the city comparison, and report **8 of 9** employees against location. On a nine-row dataset that costs almost nothing, and it removes the only judgment call in the pipeline.
+**If I were redoing this for a real stakeholder:** I would leave both fields as `Unknown`, exclude Diana from the city comparison, and report **9 of 10** employees against location. On a ten-row dataset that costs almost nothing, and it removes the only judgment call in the pipeline.
 
 ---
 
@@ -107,7 +114,7 @@ The **validation gate is deliberate**: if the data doesn't meet the documented e
 >                      |         |
 >                      |         +----------> PDF report
 >                      v
->                 (cleaning is where the 7 defects are repaired)
+>                 (cleaning is where the 8 defects are repaired)
 > ```
 
 ---
@@ -128,7 +135,7 @@ python scripts/run_scheduled.py --no-commit   # run without recording the histor
 | # | Stage | What happens |
 | --- | --- | --- |
 | 1 | Read | raw HR export → DataFrame |
-| 2 | Clean | dedupe, impute, correct outliers, renumber IDs |
+| 2 | Clean | dedupe, impute, repair digit slips, renumber IDs |
 | 3 | **Validate** | 15 checks; **fails the run on any mismatch** |
 | 4 | Write + Load | cleaned CSV, then incremental load into MySQL |
 
@@ -136,12 +143,14 @@ python scripts/run_scheduled.py --no-commit   # run without recording the histor
 
 | Layer | Proves |
 | --- | --- |
-| **Input** (raw) | the file contains *exactly* the 7 documented defects — no more, no fewer |
+| **Input** (raw) | the file contains *exactly* the 8 documented defects — no more, no fewer |
 | **Output** (clean) | no nulls, plausible age/salary ranges, IDs renumbered, assumptions unchanged, and the headline figures within a sane distance of the last run |
 
 The clearest justification for this layer: the raw file originally contained `Age = -5`. That one invalid value contaminated the median, which then contaminated every imputed age. `check_age_range` now catches exactly that class of error automatically.
 
-**The gate is growth-aware.** The first version of these checks hard-coded `9 rows` and `554,500` and rejected *any* new employee — which is a wall, not a gate, and walls get switched off. The checks are now split by kind:
+The salary range check works in **both** directions, and that took a fix. It originally counted only salaries above 10× the median, so it caught George's `900,000` but missed Kirauti's `7,500` — a salary that *lost* a digit drags the median down, so the rule never fired and a junior hire was about to be written to the database as though it were real. Both ends are now measured against the same plausible band.
+
+**The gate is growth-aware.** The first version of these checks hard-coded the row count and the total salary bill, and rejected *any* new employee — which is a wall, not a gate, and walls get switched off. The checks are now split by kind:
 
 | Kind | Examples | Behaviour |
 | --- | --- | --- |
@@ -150,16 +159,22 @@ The clearest justification for this layer: the raw file originally contained `Ag
 
 Adding an employee is therefore accepted and **reported**. Removing rows is treated more carefully, because the two cases mean different things: a **departure is a decision** and passes (it is reported as `GONE:`), while a **truncated export is a defect** and is blocked. The rule is that a run may not lose more than `MAX_ROW_LOSS_PCT` (40%) of its rows in one go, and the salary bill may not move by more than `MAX_TOTAL_MOVE_PCT` (80%) — the latter is what catches a duplicated or corrupted export.
 
-**What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it. *The example below shows what the output looks like when someone new is added — it illustrates the format, and does not change any of the figures in this README, which describe the published nine-employee snapshot:*
+**What change reporting looks like (`data/.pipeline_state.json`)** — each successful run records a small snapshot, and the next run diffs against it. *The block below is the real output of the run that added the tenth employee:*
 
 ```
-Comparing to last successful run (2026-10-21T16:39:55+00:00)
+Comparing to last successful run (2026-10-22T04:50:50+00:00)
   rows     9 -> 10   (+1)
   total    554,500 -> 631,000   (+76,500)
   mean     61,611 -> 63,100   (+1,489)
   median   59,500 -> 61,000   (+1,500)
   salary bill moved +13.8%
-  NEW: Kirau
+  NEW: Kirauti
+```
+
+**Adding an employee also moved three imputations.** That run reported `inserted=1 updated=3 unchanged=6`: the new hire was inserted, and Bob's age, Charlie's salary and Faith's age all changed — because every one of them is filled with a **median of the population**, and the median moved when the tenth salary joined (median age 29 → 30, median salary 59,500 → 61,000). A pipeline that only counted rows would have left three stale imputations sitting in the database. The change is reported, not silent:
+
+```
+Done - inserted=1 updated=3 unchanged=6 touched=4
 ```
 
 **Generated files are protected from hand-edits.** `employee_dataset_cleaned.csv` is *output* — it is rebuilt from the raw source on every run, so an edit to it would be silently overwritten. The state file therefore records the SHA-256 of the cleaned CSV as written, and the pipeline compares that against the file on disk before rebuilding it. If they differ, it says so and points you at the file to edit instead:
@@ -167,7 +182,7 @@ Comparing to last successful run (2026-10-21T16:39:55+00:00)
 ```
 WARNING: the cleaned CSV was edited by hand since the last run.
   file   : data\employee_dataset_cleaned.csv
-  last written : 162FA78CD6F37235...
+  last written : A836A3351DD0AB60...
   now on disk  : 3E80EE98C74BE615...
   This file is REGENERATED from the raw source on every run,
   so those edits are about to be overwritten.
@@ -203,7 +218,7 @@ It opens the file in Excel with three things already handled:
 It backs the file up first, and after you save and close it verifies the result and prints exactly what changed. If the file comes back broken, the backup is restored and nothing is lost.
 
 ```
-Source: data\employee dataset.csv  (10 rows)
+Source: data\employee dataset.csv  (11 rows)
 Backup : data\.edit_backup\employee dataset 2026-10-21 18:42:11.csv
 
   Excel is open and ready to edit.
@@ -242,21 +257,22 @@ Three different questions get three different answers, in three different places
 
 ```
 $ git log --oneline -- data/.pipeline_state.json
-Run 2026-10-22 06:00 - 10 rows, total 631,000
-Run 2026-10-21 06:00 - 9 rows, total 554,500
+bd45ada Run 2026-10-22 08:15 - 10 rows, total 631,000
+ae631ff Run 2026-10-22 07:50 - 9 rows, total 554,500
+9cfe411 Run 2026-10-21 20:10 - 9 rows, total 554,500
 ```
 
 Each message carries the headline numbers, and the people who joined or left. *Example — the message a run produces when a new hire has joined:*
 
 ```
-Run 2026-10-22 06:00 - 10 rows, total 631,000
+Run 2026-10-22 08:15 - 10 rows, total 631,000
 
 rows   : 10
 total  : 631,000
 mean   : 63,100
 median : 61,000
 
-joined : Kirau
+joined : Kirauti
 
 Recorded automatically by scripts/run_scheduled.py
 ```
@@ -264,7 +280,7 @@ Recorded automatically by scripts/run_scheduled.py
 A run where nothing changed says so, so a routine run is distinguishable from a change in the log: *Example — the message from a run where the data was identical to the previous one:*
 
 ```
-Run 2026-10-21 06:00 - 9 rows, total 554,500
+Run 2026-10-21 20:10 - 9 rows, total 554,500
 
 rows   : 9
 total  : 554,500
@@ -292,7 +308,7 @@ If git is unavailable, misconfigured or offline, the run still counts as a succe
 
 **The logs are the debugging layer, not the history.** Each run writes `logs/pipeline_<timestamp>.log` with the full check output, exit code and duration, and the folder keeps the 30 most recent files. They are git-ignored on purpose: they are machine output for diagnosing a failure, and the durable record belongs in git.
 
-The numbers in this README describe the **nine-employee snapshot** the analysis was published on. They remain true of that snapshot; the state file is what keeps the current totals honest once the data grows.
+The numbers in this README describe the **ten-employee snapshot** the analysis is currently published on — 11 raw rows in, 10 clean rows out. They are recomputed from the data on every run, so they cannot drift away from it.
 
 **Incremental loading (`scripts/incremental.py`)** replaces the notebook's `if_exists="replace"`:
 
@@ -307,7 +323,7 @@ Replacing the table every run drops indexes and constraints, briefly leaves the 
 
 Rows that disappear from the source are deliberately **not deleted** — a truncated export must never be able to wipe the employee table. They are logged instead, so the discrepancy is visible rather than silent.
 
-> **Note on scale:** the loader handles an appended history — it inserts new records and updates changed ones without touching the rest, so cost scales with the size of the change rather than the size of the table. On this nine-row export, which is *corrected* rather than *appended*, that behaviour is verifiable rather than dramatic: a re-run performs **zero writes**, which is how the correctness is confirmed rather than assumed. The same applies to the gate — see **Growth-aware gate** above for what happens when rows are added.
+> **Note on scale:** the loader handles an appended history — it inserts new records and updates changed ones without touching the rest, so cost scales with the size of the change rather than the size of the table. On this ten-row export, which is *corrected* rather than *appended*, that behaviour is verifiable rather than dramatic: a re-run performs **zero writes**, which is how the correctness is confirmed rather than assumed. The same applies to the gate — see **Growth-aware gate** above for what happens when rows are added.
 
 **Scheduling (`scripts/register_task.ps1`)** registers a daily Windows Task Scheduler job:
 
@@ -328,7 +344,7 @@ Every scheduled run writes a timestamped log to `logs/` and returns a distinct e
 | Is not killed if the charger is pulled mid-run | `DontStopIfGoingOnBatteries` | the default would stop a run halfway through |
 | Needs the user to be **signed in** | `LogonType Interactive` | deliberately avoids storing a password; the trade-off is that the job does not run while signed out |
 
-The battery defaults were a genuine bug found by testing the task rather than assuming it worked: the job sat in `Queued` forever on an unplugged laptop. The whole run takes about three seconds and writes nine rows to a local database, so fencing it off from battery power served no purpose. In production this job would move to a server under a service account, where the machine is always on and the user is never involved.
+The battery defaults were a genuine bug found by testing the task rather than assuming it worked: the job sat in `Queued` forever on an unplugged laptop. The whole run takes about three seconds and writes ten rows to a local database, so fencing it off from battery power served no purpose. In production this job would move to a server under a service account, where the machine is always on and the user is never involved.
 
 **Power BI refresh is documented, not scripted.** Refreshing the `.pbix` is a GUI action in Power BI Desktop; Power BI Desktop cannot be driven headlessly from Task Scheduler. In production the equivalent is **scheduled refresh in the Power BI Service**, which runs on Microsoft's side against a published dataset and needs no local machine to be awake. Below is the accurate local picture:
 
@@ -357,18 +373,18 @@ Task Scheduler (06:00) -> run_scheduled.ps1 -> pipeline.py
 
 ## 🔍 Key Findings
 
-- **Headcount grew from 1 to 9 employees in five months** (Jan–May 2025), with a steady ~2 hires per month from February onward.
-- **The pay distribution is right-skewed.** Mean salary is **KES 61,611** but the median is **KES 59,500** — a small number of high earners pull the average above what a typical employee earns. Any "average salary" headline is misleading on its own.
-- **Nairobi pays the most — but the number is deceptive.** Its average of **KES 72,500** is **17.7% above the company mean**, yet that is driven almost entirely by a *single* senior hire. Nairobi's average is not evidence of a systematic city premium.
-- **Nakuru is the lowest-paying city** at **KES 48,000**, **22% below** the company mean, and **Eldoret** sits at **KES 51,000**.
-- **Age is the strongest single predictor of salary.** Pearson **r = 0.845** (**r² = 0.71**) — age alone explains roughly **71%** of salary variance in this dataset. The youngest employee (25) earns **KES 55,000**; the oldest (40) earns **KES 90,000** — a **1.64×** gap.
-- **One statistical outlier.** George's **KES 90,000** sits above the Tukey upper fence of **KES 85,500** (Q1 = 53,000, Q3 = 66,000, IQR = 13,000). He is the only employee flagged.
-- **Cleaning changed the entire conclusion.** Computed on the raw export, average salary reads **KES 151,111**; correctly cleaned it is **KES 61,611** — a **145% inflation** caused by a single `900,000` typo and one duplicated row. Untreated, this data would have produced a false narrative.
+- **Headcount grew from 1 to 10 employees in five months** (Jan–May 2025), with a steady ~2 hires per month from February onward.
+- **The pay distribution is right-skewed.** Mean salary is **KES 63,100** but the median is **KES 61,000** — a small number of high earners pull the average above what a typical employee earns. Any "average salary" headline is misleading on its own.
+- **Nairobi pays the most — but the number is deceptive.** Its average of **KES 72,500** is **14.9% above the company mean**, yet that is driven almost entirely by a *single* senior hire — without that one person Nairobi's average is **KES 55,000**, *below* the company mean. Nairobi's average is not evidence of a systematic city premium.
+- **Nakuru is the lowest-paying city** at **KES 48,000**, **23.9% below** the company mean, and **Eldoret** sits at **KES 51,000**.
+- **Age is the strongest single predictor of salary.** Pearson **r = 0.765** (**r² = 0.59**) — age alone explains roughly **59%** of salary variance in this dataset. The youngest employee (25) earns **KES 55,000**; the oldest (40) earns **KES 90,000** — a **1.64×** gap.
+- **Outlier status depends on the sample.** Across all 10 salaries the Tukey upper fence is **KES 98,750** (Q1 = 55,000, Q3 = 72,500, IQR = 17,500) and **nobody is flagged** — George at **KES 90,000** sits inside it. Measured against the other 9 salaries the fence falls to **KES 85,500**, and he is still above it. He is the one earner the average cannot absorb, but a rule that counted everyone at once would have missed him.
+- **Cleaning changed the entire conclusion.** Computed on the raw export, average salary reads **KES 136,750**; correctly cleaned it is **KES 63,100** — a **117% inflation** caused by two ten-fold digit slips and one duplicated row. Untreated, this data would have produced a false narrative.
 
 > **Recommendation**
-> 1. **Introduce age/experience-based pay bands** so compensation tracks seniority explicitly rather than implicitly — the r² of 0.71 says seniority is already driving pay, just informally.
-> 2. **Review the single senior outlier** against market benchmarks before treating Nairobi's average as a real signal.
-> 3. **Add validation at the source.** A primary-key constraint to block duplicate `EmployeeID`s, a range check to reject impossible ages, and a sanity cap on `Salary` would have caught all 7 issues before they reached a report — this is cheaper than cleaning downstream every time.
+> 1. **Introduce age/experience-based pay bands** so compensation tracks seniority explicitly rather than implicitly — the r² of 0.59 says seniority is already driving pay, just informally.
+> 2. **Review the top earner** against market benchmarks before treating Nairobi's average as a real signal.
+> 3. **Add validation at the source.** A primary-key constraint to block duplicate `EmployeeID`s, a range check to reject impossible ages, and a range check on `Salary` would have caught all 8 issues before they reached a report — this is cheaper than cleaning downstream every time.
 
 ---
 
@@ -389,6 +405,8 @@ Task Scheduler (06:00) -> run_scheduled.ps1 -> pipeline.py
 | ![](reports/charts/headcount_by_city.png) | ![](reports/charts/hiring_trend.png) | ![](reports/charts/salary_by_city.png) |
 | **Headcount by city** | **Hiring trend** | **Salary by city** |
 
+> The three charts above are **generated, not hand-made**. `reports/make_charts.py` rebuilds them from `employee_dataset_cleaned.csv`, and `reports/generate_report.py` calls it before it renders — so the PDF can never show a chart from an earlier run sitting next to today's tables. The charts used to be committed PNGs with no generator anywhere in the repo, which made them stale by construction.
+
 ---
 
 ## 📁 Repository Structure
@@ -398,8 +416,8 @@ employee-salary-headcount-dashboard/
 ├── assets/
 │   └── dashboard.png                              # Power BI dashboard screenshot
 ├── data/
-│   ├── employee dataset.csv                       # raw HR export (10 rows, messy) - the source
-│   ├── employee_dataset_cleaned.csv               # cleaned output (9 rows) - regenerated each run
+│   ├── employee dataset.csv                       # raw HR export (11 rows, messy) - the source
+│   ├── employee_dataset_cleaned.csv               # cleaned output (10 rows) - regenerated each run
 │   └── .pipeline_state.json                       # last successful run, and the run history (committed)
 ├── dashboard/
 │   └── Employee salary dashboard.pbix             # Power BI file
@@ -412,7 +430,8 @@ employee-salary-headcount-dashboard/
 │   │   ├── headcount_by_city.png
 │   │   ├── hiring_trend.png
 │   │   └── salary_by_city.png
-│   └── generate_report.py                         # regenerates the PDF from the data
+│   ├── generate_report.py                         # regenerates the PDF from the data
+│   └── make_charts.py                             # regenerates the three PNGs from the data
 ├── scripts/                                       # automation (see Automation above)
 │   ├── pipeline.py                                # clean -> validate -> load, one command
 │   ├── checks.py                                  # 15 data-quality checks
@@ -483,7 +502,7 @@ mysql -u <user> -p employee_db < "sql/employees queries.sql"
 # 6. Open "dashboard/Employee salary dashboard.pbix" in Power BI Desktop and refresh
 
 # 7. Regenerate the PDF report from the data (optional)
-python reports/generate_report.py
+python reports/generate_report.py     # rebuilds the charts and the PDF together
 ```
 
 > **Note:** DB credentials are read from an untracked `.env` file. Create one next to the notebook (or at the project root) with your own values — never hard-code them:
@@ -503,7 +522,7 @@ python reports/generate_report.py
 
 | Skill | Where |
 | --- | --- |
-| **Data cleaning** — missing values, duplicate detection, invalid ranges, outlier correction | `notebooks/employee  data cleaning.ipynb` |
+| **Data cleaning** — missing values, duplicate detection, invalid ranges, digit-slip repair | `notebooks/employee  data cleaning.ipynb` |
 | **Relational storage & schema design** | MySQL |
 | **Business-logic SQL** — aggregation, grouping, ranking | `sql/employees queries.sql` |
 | **Distribution analysis** — mean vs median, IQR outlier detection | Analysis + report |
@@ -523,7 +542,7 @@ python reports/generate_report.py
 ## 🚀 What I'd Do Next
 
 - Add **department / job-title data** to separate *pay-for-role* from *pay-for-location* — the current data can't distinguish them, which is why Nairobi's premium is ambiguous.
-- Replace the two assumed values with **real source records**, then re-run the city comparison at 9 of 9.
+- Replace the two assumed values with **real source records**, then re-run the city comparison at 10 of 10.
 - Add **salary-benchmark comparison** against external market data.
 - Move the schedule to a **cloud or server environment** so the job no longer depends on one machine being switched on, with **Power BI Service scheduled refresh** replacing the manual `.pbix` refresh.
 - Add a **notification on failure** (email or Teams message) so a broken nightly run is noticed the same morning, not the next time someone opens the dashboard.
