@@ -18,12 +18,12 @@ After a successful run, these artifacts are updated automatically:
 - data/employee_dataset_cleaned.csv          (13 clean rows)
 - data/.pipeline_state.json                   (raw 14 / clean 13 / total 836,500 / mean 64,346 / median 61,500)
 
-NOTE: Charts and PDF are NOT updated by the pipeline — see STEP 2.
+NOTE: Charts, PDF, and PPTX are NOT updated by the pipeline — see STEP 2.
 
 
-STEP 2 — REPORT GENERATION (charts + PDF):
-------------------------------------------
-After the pipeline succeeds, regenerate charts and PDF:
+STEP 2 — REPORT GENERATION (charts + PDF + PPTX):
+-------------------------------------------------
+After the pipeline succeeds, regenerate charts, PDF, and PPTX:
 
 C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\reports\generate_report.py"
 
@@ -32,8 +32,9 @@ This regenerates (from the SAME cleaned CSV the pipeline just wrote):
 - reports/charts/salary_by_city.png
 - reports/charts/headcount_by_city.png
 - reports/charts/hiring_trend.png
+- **reports/Employee Salary & Headcount Dashboard.pptx** (slide deck auto-updated)
 
-NOTE: README.md, _profile/README.md, Projects.jsx, and PPTX deck are NOT auto-updated by either script.
+NOTE: README.md, _profile/README.md, and Projects.jsx are NOT auto-updated by either script.
 You must update those separately when the data snapshot changes.
 
 
