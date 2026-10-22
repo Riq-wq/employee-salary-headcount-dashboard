@@ -45,6 +45,7 @@ from reportlab.platypus import (
 )
 
 import make_charts  # noqa: E402
+import update_pptx  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Paths
@@ -441,6 +442,9 @@ def build() -> Path:
     # Rebuild the three charts from these exact rows before rendering, so the
     # PDF can never show a chart from an earlier run beside today's tables.
     make_charts.build_all(clean)
+
+    # Also update the PPTX deck with the same data
+    update_pptx.update_pptx(clean)
 
     salaries = [r["Salary"] for r in clean]
     ages = [r["Age"] for r in clean]
