@@ -1,11 +1,13 @@
-=== MANUAL RUN COMMAND ===
+=== COMPLETE WORKFLOW (TWO STEPS) ===
 
-To run the full pipeline manually, execute:
+STEP 1 — DATA PIPELINE (auto-updates CSV, DB, git state):
+----------------------------------------------------------
+To run the data pipeline manually, execute:
 
 C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\scripts\run_scheduled.py"
 
 This will:
-- Clean the raw CSV (13 rows → 12, drop duplicate, repair 2 digit slips)
+- Clean the raw CSV (14 rows → 13, drop duplicate, repair 2 digit slips)
 - Impute 3 values with median (Bob age 30→29, Faith age -5→29, Charlie salary 61,000→59,500)
 - Run 15 data-quality checks (stops on failure, nothing written)
 - Write cleaned CSV, load MySQL incrementally
@@ -13,42 +15,70 @@ This will:
 - Exit 0 on success; non-zero on failure (publishes nothing)
 
 After a successful run, these artifacts are updated automatically:
-- data/employee_dataset_cleaned.csv          (12 clean rows)
-- data/.pipeline_state.json                   (raw 13 / clean 12 / total 761,000 / mean 63,346 / median 61,000)
-- reports/generate_report.py                  (recomputed from data)
-- reports/Employee_Salary_Dashboard_Report.pdf (6-page report regenerated)
-- reports/charts/headcount_by_city.png        (regenerated)
-- reports/charts/hiring_trend.png             (regenerated)
-- reports/charts/salary_by_city.png           (regenerated)
-- reports/Employee Salary & Headcount Dashboard.pptx (slide deck regenerated)
+- data/employee_dataset_cleaned.csv          (13 clean rows)
+- data/.pipeline_state.json                   (raw 14 / clean 13 / total 836,500 / mean 64,346 / median 61,500)
 
-Note: README.md, _profile/README.md, and Projects.jsx are NOT auto-updated by the script.
-You must update those separately.
+NOTE: Charts and PDF are NOT updated by the pipeline — see STEP 2.
 
-=== QUICK VERIFY ===
 
+STEP 2 — REPORT GENERATION (charts + PDF):
+------------------------------------------
+After the pipeline succeeds, regenerate charts and PDF:
+
+C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\reports\generate_report.py"
+
+This regenerates (from the SAME cleaned CSV the pipeline just wrote):
+- reports/Employee_Salary_Dashboard_Report.pdf (6-page report)
+- reports/charts/salary_by_city.png
+- reports/charts/headcount_by_city.png
+- reports/charts/hiring_trend.png
+
+NOTE: README.md, _profile/README.md, Projects.jsx, and PPTX deck are NOT auto-updated by either script.
+You must update those separately when the data snapshot changes.
+
+
+=== COMPLETE TWO-STEP COMMAND ===
+---------------------------------
+Run both in sequence:
+
+C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\scripts\run_scheduled.py"
+C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\reports\generate_report.py"
+
+
+=== QUICK VERIFY (no writes) ===
+--------------------------------
 To just check data quality (no writes):
 
 C:\ProgramData\anaconda3\python.exe -c "import sys; sys.path.insert(0, 'scripts'); from checks import run_all_checks; run_all_checks()"
 
-=== AFTER RUN ===
 
+=== AFTER RUN ===
+-----------------
 Git commit is automatic on success:
 git log --oneline -- data/.pipeline_state.json
 
 Shows the last successful run message. Branch is 6 ahead of origin/main; push is skipped.
 
-=== KEY FIGURES (12-employee snapshot) ===
 
-Clean rows: 12 | Raw rows: 13 | Total salary: KES 761,000
-Mean: KES 63,346 | Median: KES 61,000
-Kisumu avg: KES 66,375 | Nairobi avg: KES 65,000 | Haaland avg contribution
+=== KEY FIGURES (13-employee snapshot, London at Eldoret) ===
+--------------------------------------------------------------
+Clean rows: 13 | Raw rows: 14 | Total salary: KES 836,500
+Mean: KES 64,346 | Median: KES 61,500
+
+City averages (13 employees):
+  Kisumu:     4 employees, KES 66,875
+  Mombasa:    3 employees, KES 66,667
+  Nairobi:    3 employees, KES 65,000
+  Eldoret:    2 employees, KES 63,000 (Faith + London)
+  Nakuru:     1 employee,  KES 48,000
+
 Diana's city is Kisumu (disclosed assumption, never 'mode')
-Both Tukey fences published: pooled 98,500 / leave-one-out 88,500
-7.6% increase vs last run (new employee Haaland added)
+Both Tukey fences published: pooled 108,000 / leave-one-out 91,125
+88% inflation if left uncleaned (raw mean 120,962 vs cleaned 64,346)
 
-=== The pipeline is growth-aware ===
 
+=== GROWTH-AWARE PIPELINE ===
+------------------------------
 Adding an employee is accepted and reported, not blocked. The count compares against the previous successful run, not a hard-coded wall. A large shrink is blocked because data disappearing is almost always a bug rather than a decision.
 
 The pipeline correctly reports: "GONE: [name]" when a row absent from source is in the DB, and "NEW: [name]" when a new employee is added.
