@@ -46,7 +46,7 @@ import pandas as pd
 #   true for any correct dataset, whatever its size. They scale freely.
 #
 #   COUNT expectations (row counts, headline totals) are only true for ONE
-#   particular dataset — the nine-row snapshot this project published. They
+#   particular dataset — the eleven-row snapshot this project published. They
 #   were hard walls in the first version, which meant every new employee was
 #   rejected.
 #
@@ -56,19 +56,19 @@ import pandas as pd
 # successful run (see ``state.py``) and reports the movement, rather than
 # refusing to proceed. Growth is expected; silent growth is what we prevent.
 # --------------------------------------------------------------------------
-RAW_ROWS = 11                 # raw rows in the published snapshot (baseline)
-CLEAN_ROWS = 10               # clean rows in the published snapshot (baseline)
+RAW_ROWS = 12                 # raw rows in the published snapshot (baseline)
+CLEAN_ROWS = 11               # clean rows in the published snapshot (baseline)
 DUPLICATES_DROPPED = 1        # duplicates in the published snapshot (baseline)
 
 AGE_MIN, AGE_MAX = 18, 70     # plausible working ages
 SALARY_MIN, SALARY_MAX = 10_000, 500_000   # plausible monthly KES range
 
-TOTAL_SALARY = 631_000        # the published snapshot total
-MEAN_SALARY = 63_100          # the published snapshot mean
-MEDIAN_SALARY = 61_000        # the published snapshot median
+TOTAL_SALARY = 679_500        # the published snapshot total
+MEAN_SALARY = 61_773          # the published snapshot mean
+MEDIAN_SALARY = 59_500        # the published snapshot median
 
 # How far the headline numbers may move in one run before the gate objects.
-# A single new employee among nine is an ~11% row increase, so the allowance
+# A single new employee among eleven is a ~9% row increase, so the allowance
 # must be generous enough not to block ordinary growth, while still catching a
 # corrupted or duplicated source file (which would move the total by 2x or
 # more at once).

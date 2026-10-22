@@ -287,6 +287,20 @@ def pearson(xs: list[float], ys: list[float]) -> float:
     return statistics.correlation(xs, ys)
 
 
+def leader_phrase(names: list[str], count: int) -> str:
+    """Describe who leads a headcount: "Kisumu leads on 4", or
+    "Kisumu and Nairobi tie on 3".
+
+    Used instead of a hard-coded sentence, because whether the answer changes
+    when the documented assumption is removed depends on the data.
+    """
+    if len(names) == 1:
+        return f"{names[0]} leads on {count}"
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]} tie on {count}"
+    return f"{', '.join(names[:-1])} and {names[-1]} tie on {count}"
+
+
 def payroll_by_month(rows: list[dict]) -> list[tuple[str, int, int]]:
     """(month label, new hires, cumulative monthly payroll) in join order."""
     out: list[list] = []
@@ -472,6 +486,35 @@ def build() -> Path:
         r["Salary"] for r in kisumu_rows if r["EmployeeID"] != diana_id
     )
 
+    # --- which city has the most people, with and without the assumption --
+    #
+    # This used to be asserted in prose ("which city has the most people does
+    # not change either way"). Adding an eleventh employee turned that
+    # assertion false: with Diana in Kisumu the city leads on headcount, but
+    # without her it draws level with Nairobi. The sentence is now derived
+    # from the data so it cannot drift out of step with the numbers again.
+    #
+    # The city that loses a headcount is the one Diana's row actually sits in,
+    # read from the cleaned data, not a hard-coded "Kisumu".
+    diana_city = next(r["City"] for r in clean if r["EmployeeID"] == diana_id)
+    headcount_without = dict(city_n)
+    headcount_without[diana_city] = headcount_without.get(diana_city, 0) - 1
+    max_with = max(city_n.values())
+    max_without = max(headcount_without.values())
+    leaders_with = sorted(c for c, n in city_n.items() if n == max_with)
+    leaders_without = sorted(c for c, n in headcount_without.items() if n == max_without)
+    if leaders_with == leaders_without:
+        headcount_note = (
+            f"The headcount answer is the same either way: "
+            f"{leader_phrase(leaders_with, max_with)}."
+        )
+    else:
+        headcount_note = (
+            f"The headcount answer does not survive the assumption: "
+            f"{leader_phrase(leaders_with, max_with)} with it, but "
+            f"{leader_phrase(leaders_without, max_without)} without it."
+        )
+
     # --- payroll ramp --------------------------------------------------
     payroll = payroll_by_month(clean)
 
@@ -493,6 +536,33 @@ def build() -> Path:
     slip_count = sum(1 for issue, _, _ in defects if "digit slip" in issue)
     slip_phrase = ("one digit slip in the salary column" if slip_count == 1
                    else f"{slip_count} digit slips in the salary column")
+
+    # How many duplicate rows the cleaner dropped, read back from the raw
+    # file. The headline callout names this, so it cannot be a hard-coded
+    # number either.
+    dup_groups: dict[tuple, list[dict]] = {}
+    for r in raw:
+        key = (r["Name"], r["Age"], r["City"], r["Salary"], r["JoinDate"])
+        dup_groups.setdefault(key, []).append(r)
+    dup_rows = sum(len(m) - 1 for m in dup_groups.values() if len(m) > 1)
+    dup_phrase = "one duplicated row" if dup_rows == 1 else f"{dup_rows} duplicated rows"
+
+    # Whether the top earner is still flagged depends on the sample, so the
+    # wording follows the data rather than assuming the answer.
+    if top_person["Salary"] > rest_fence:
+        outlier_lead = "<b>One earner the average cannot absorb.</b>"
+        rest_clause = (
+            f"Measured against the other {len(clean) - 1} salaries the fence falls to "
+            f"KES {rest_fence:,.0f}, and KES {high:,} still sits above it &#8212; the one "
+            f"figure the average cannot absorb."
+        )
+    else:
+        outlier_lead = "<b>How the distribution reads.</b>"
+        rest_clause = (
+            f"Measured against the other {len(clean) - 1} salaries the fence falls to "
+            f"KES {rest_fence:,.0f}, and KES {high:,} does not sit above it either &#8212; so "
+            f"neither view of the distribution flags an outlier in this set."
+        )
 
     # --- the year the hiring trend covers --------------------------------
     years = sorted({datetime.strptime(r["JoinDate"], "%d/%m/%Y").year for r in clean})
@@ -603,7 +673,7 @@ def build() -> Path:
     # ---- page 4 ------------------------------------------------------
     story += [PageBreak()]
     story += band("Key Insights")
-    city_order = sorted(city_n.items(), key=lambda kv: -kv[1])
+    city_order = sorted(city_n.items(), key=lambda kv: (-kv[1], kv[0]))
     headcount_txt = ", ".join(
         f"{c} {n}" for c, n in city_order[:-1]) + f" and {city_order[-1][0]} {city_order[-1][1]}"
     insights = [
@@ -620,13 +690,11 @@ def build() -> Path:
          f"salary variance. {youngest['Name']}, the youngest at {youngest['Age']}, earns "
          f"KES {youngest['Salary']:,}; {oldest['Name']}, the oldest at {oldest['Age']}, earns "
          f"KES {oldest['Salary']:,} &#8212; a <b>{age_gap:.2f}&#215;</b> gap."),
-        ("<b>One earner the average cannot absorb.</b>",
+        (outlier_lead,
          f"{top_person['Name']}&#8217;s KES {high:,} is the highest salary in the set. Across all "
          f"{len(clean)} salaries the Tukey upper fence is KES {fence:,.0f} "
          f"(Q1 = {q1:,.0f}, Q3 = {q3:,.0f}, IQR = {iqr:,.0f}), and {outlier_clause}. "
-         f"Measured against the other {len(clean) - 1} salaries the fence falls to "
-         f"KES {rest_fence:,.0f}, and KES {high:,} still sits above it &#8212; the one figure the "
-         f"average cannot absorb."),
+         f"{rest_clause}"),
     ]
     for i, (lead, body) in enumerate(insights, 1):
         story += [Paragraph(
@@ -638,7 +706,7 @@ def build() -> Path:
         "THE FINDING THAT MATTERS: CLEANING CHANGED THE CONCLUSION",
         f"Computed on the raw export, average salary reads <b>KES {raw_mean:,.0f}</b>. Correctly cleaned "
         f"it is <b>KES {mean:,.0f}</b> &#8212; an inflation of <b>{inflation:.0f}%</b>, caused by "
-        f"{slip_phrase} and one duplicated row. Left untreated, this dataset would have produced a false "
+        f"{slip_phrase} and {dup_phrase}. Left untreated, this dataset would have produced a false "
         f"narrative about what the company pays. The cleaning step <i>is</i> the analysis.", WARN)]
     story += [Spacer(1, 9)]
 
@@ -656,8 +724,7 @@ def build() -> Path:
         Paragraph(f"Kisumu averages <b>KES {kisumu_with:,.0f}</b> with the assumption and "
                   f"<b>KES {kisumu_without:,.0f}</b> without it; its headcount reads "
                   f"<b>{len(kisumu_rows)} of {len(clean)}</b> with it and "
-                  f"<b>{len(kisumu_rows) - 1}</b> without. Which city has the most people does not "
-                  f"change either way.", CELL),
+                  f"<b>{len(kisumu_rows) - 1}</b> without. {headcount_note}", CELL),
     ])
     tbl.append([
         Paragraph("ID 9&#8217;s Name &#8594; &#8216;Jamal&#8217;", CELL_B), Paragraph("Placeholder", CELL),
