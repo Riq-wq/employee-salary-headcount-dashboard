@@ -5,7 +5,7 @@ To run the full pipeline manually, execute:
 C:\ProgramData\anaconda3\python.exe "C:\Users\Hassan\Desktop\DATA ANALYSIS PROJECTS\employee salaries analysis\scripts\run_scheduled.py"
 
 This will:
-- Clean the raw CSV (12 rows → 11, drop duplicate, repair 2 digit slips)
+- Clean the raw CSV (13 rows → 12, drop duplicate, repair 2 digit slips)
 - Impute 3 values with median (Bob age 30→29, Faith age -5→29, Charlie salary 61,000→59,500)
 - Run 15 data-quality checks (stops on failure, nothing written)
 - Write cleaned CSV, load MySQL incrementally
@@ -13,8 +13,8 @@ This will:
 - Exit 0 on success; non-zero on failure (publishes nothing)
 
 After a successful run, these artifacts are updated automatically:
-- data/employee_dataset_cleaned.csv          (11 clean rows)
-- data/.pipeline_state.json                   (raw 12 / clean 11 / total 679,500 / mean 61,773 / median 59,500)
+- data/employee_dataset_cleaned.csv          (12 clean rows)
+- data/.pipeline_state.json                   (raw 13 / clean 12 / total 761,000 / mean 63,346 / median 61,000)
 - reports/generate_report.py                  (recomputed from data)
 - reports/Employee_Salary_Dashboard_Report.pdf (6-page report regenerated)
 - reports/charts/headcount_by_city.png        (regenerated)
@@ -23,7 +23,7 @@ After a successful run, these artifacts are updated automatically:
 - reports/Employee Salary & Headcount Dashboard.pptx (slide deck regenerated)
 
 Note: README.md, _profile/README.md, and Projects.jsx are NOT auto-updated by the script.
-You must update those separately (as we just did for the 11-employee snapshot).
+You must update those separately.
 
 === QUICK VERIFY ===
 
@@ -38,11 +38,17 @@ git log --oneline -- data/.pipeline_state.json
 
 Shows the last successful run message. Branch is 6 ahead of origin/main; push is skipped.
 
-=== KEY FIGURES (11-employee snapshot) ===
+=== KEY FIGURES (12-employee snapshot) ===
 
-Clean rows: 11 | Raw rows: 12 | Total salary: KES 679,500
-Mean: KES 61,773 | Median: KES 59,500
-Kisumu avg: KES 66,375 | Nairobi avg: KES 65,000
-Diana's city: Kisumo (disclosed assumption, never 'mode')
+Clean rows: 12 | Raw rows: 13 | Total salary: KES 761,000
+Mean: KES 63,346 | Median: KES 61,000
+Kisumu avg: KES 66,375 | Nairobi avg: KES 65,000 | Haaland avg contribution
+Diana's city is Kisumu (disclosed assumption, never 'mode')
 Both Tukey fences published: pooled 98,500 / leave-one-out 88,500
-109% inflation if left uncleaned (raw mean 128,864)
+7.6% increase vs last run (new employee Haaland added)
+
+=== The pipeline is growth-aware ===
+
+Adding an employee is accepted and reported, not blocked. The count compares against the previous successful run, not a hard-coded wall. A large shrink is blocked because data disappearing is almost always a bug rather than a decision.
+
+The pipeline correctly reports: "GONE: [name]" when a row absent from source is in the DB, and "NEW: [name]" when a new employee is added.
