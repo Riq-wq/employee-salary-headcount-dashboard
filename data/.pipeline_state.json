@@ -1,15 +1,16 @@
 {
-  "taken_at": "2026-10-22T13:06:41+00:00",
-  "raw_rows": 14,
-  "clean_rows": 13,
-  "total_salary": 836500,
-  "mean_salary": 64346,
-  "median_salary": 61500,
+  "taken_at": "2026-10-22T20:04:57+00:00",
+  "raw_rows": 15,
+  "clean_rows": 14,
+  "total_salary": 932000,
+  "mean_salary": 66571,
+  "median_salary": 62000,
   "names": [
     "Alice",
     "Bob",
     "Charlie",
     "Diana",
+    "Esther",
     "Evan",
     "Faith",
     "George",
@@ -20,6 +21,6 @@
     "Kirauti",
     "London"
   ],
-  "clean_sha256": "0534E5CD8A6EA8332AA7B1E678B02BC4D3085DC623DFA2AACF3ED12C0D6799D5",
-  "raw_sha256": "202EAB33F6FE383AED8FE03B5477505CC5FE419E100D9A8CE3AAE029499EEFBC"
+  "clean_sha256": "350F3A20AEEBD276A6B639E1B435BEFA29A553435DA01DBD64BD07B408445E9A",
+  "raw_sha256": "EDE68AA936449034B30033D8F7A69708B794070899D1D7BAE0C011BAEF56B533"
 }
