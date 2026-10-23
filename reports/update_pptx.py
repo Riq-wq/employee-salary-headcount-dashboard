@@ -142,14 +142,28 @@ def update_pptx(clean_rows: list[dict] | None = None) -> None:
 
     # ---- Slide 11 (index 11): Ranking table ----
     tbl = _shape_by_id(slides[11], 12).table
+    
+    # Ensure exact number of data rows: remove extra, add if needed
+    current_data_rows = len(tbl.rows) - 1
+    needed = len(ranked)
+    
+    # Remove extra rows from bottom
+    while current_data_rows > needed:
+        trs = tbl._tbl.findall(
+            "{http://schemas.openxmlformats.org/drawingml/2006/main}tr"
+        )
+        tbl._tbl.remove(trs[-1])
+        current_data_rows -= 1
+    
     # Add rows if needed
-    while len(tbl.rows) - 1 < len(ranked):
+    while current_data_rows < needed:
         trs = tbl._tbl.findall(
             "{http://schemas.openxmlformats.org/drawingml/2006/main}tr"
         )
         template = trs[-1]
         new_tr = copy.deepcopy(template)
         template.addnext(new_tr)
+        current_data_rows += 1
 
     for i, r in enumerate(ranked, 1):
         delta = (r["Salary"] - mean) / mean * 100
