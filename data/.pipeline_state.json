@@ -1,10 +1,10 @@
 {
-  "taken_at": "2026-10-22T20:34:23+00:00",
-  "raw_rows": 15,
-  "clean_rows": 14,
-  "total_salary": 932000,
-  "mean_salary": 66571,
-  "median_salary": 62000,
+  "taken_at": "2026-10-23T04:40:15+00:00",
+  "raw_rows": 14,
+  "clean_rows": 13,
+  "total_salary": 851500,
+  "mean_salary": 65500,
+  "median_salary": 61500,
   "names": [
     "Alice",
     "Bob",
@@ -14,13 +14,12 @@
     "Evan",
     "Faith",
     "George",
-    "Haaland",
     "Hassan",
     "Jamal",
     "Kamau",
     "Kirauti",
     "London"
   ],
-  "clean_sha256": "350F3A20AEEBD276A6B639E1B435BEFA29A553435DA01DBD64BD07B408445E9A",
-  "raw_sha256": "EDE68AA936449034B30033D8F7A69708B794070899D1D7BAE0C011BAEF56B533"
+  "clean_sha256": "7D65D4EC25FCEEEA354219E9490190E372725E71AB6003BADB0045210EA00C0C",
+  "raw_sha256": "CB245FB30853BE94B4F9991A26477AE565D47E3F420534F6A73019AC26C75F6C"
 }
