@@ -83,6 +83,27 @@ EXIT_DB = 3
 EXIT_UNEXPECTED = 4
 
 
+def run_generate_report() -> tuple[int, str]:
+    """Run generate_report.py and return (exit_code, output)."""
+    try:
+        # Run generate_report.py from the reports directory
+        cmd = [sys.executable, str(ROOT / "reports" / "generate_report.py")]
+        proc = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
+        return proc.returncode, (proc.stdout + proc.stderr).strip()
+    except subprocess.TimeoutExpired:
+        return 4, "generate_report.py timed out after 5 minutes"
+    except Exception as exc:
+        return 4, f"generate_report.py failed: {exc}"
+
+
 # --------------------------------------------------------------------------
 # History — commit the run state so `git log` records what changed
 # --------------------------------------------------------------------------
@@ -254,6 +275,15 @@ def run_once(write_log: bool = True, write_history: bool = True) -> int:
     status = "SUCCESS" if code == EXIT_OK else "FAILED"
     body = buffer.getvalue()
 
+    # -- run report generation on success ----------------------------------
+    report_note = ""
+    if code == EXIT_OK:
+        report_code, report_out = run_generate_report()
+        if report_code == 0:
+            report_note = "report generation: SUCCESS"
+        else:
+            report_note = f"report generation: FAILED (exit={report_code})"
+
     # -- record the history ------------------------------------------------
     # Only on success. A failed run leaves the state file alone, so the
     # recorded history always matches the data that actually exists.
@@ -289,6 +319,8 @@ def run_once(write_log: bool = True, write_history: bool = True) -> int:
     if body:
         print(body.strip())
     print(f"history     : {history_note}")
+    if report_note:
+        print(f"report      : {report_note}")
     return code
 
 

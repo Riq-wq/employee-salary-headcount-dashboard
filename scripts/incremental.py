@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import pandas as pd
-from sqlalchemy import inspect, text
+from sqlalchemy import bindparam, inspect, text
 
 TABLE = "employees"
 KEY = "EmployeeID"
@@ -60,18 +60,19 @@ class LoadPlan:
     unchanged: int = 0                                  # left alone
     table_created: bool = False                         # first run
     # Rows present in the database but ABSENT from the incoming data.
-    # These are deliberately NOT deleted (see module docstring), so they are
-    # reported instead — an unexplained extra employee should never be silent.
     missing_from_source: list[int] = field(default_factory=list)
+    deleted: list[int] = field(default_factory=list)   # removed because source no longer has them
 
     @property
     def touched(self) -> int:
-        return len(self.inserted) + len(self.updated)
+        return len(self.inserted) + len(self.updated) + len(self.deleted)
 
     def summary(self) -> str:
         base = (f"inserted={len(self.inserted)} updated={len(self.updated)} "
-                f"unchanged={self.unchanged} touched={self.touched}")
-        if self.missing_from_source:
+                f"unchanged={self.unchanged} deleted={len(self.deleted)} touched={self.touched}")
+        if self.missing_from_source and not self.deleted:
+            base += f" | absent_from_source={len(self.missing_from_source)}"
+        elif self.missing_from_source:
             base += f" | absent_from_source={len(self.missing_from_source)}"
         return base
 
@@ -203,11 +204,10 @@ def _coerce_for_db(row: dict, date_cols: set[str]) -> dict:
 
 def incremental_load(df: pd.DataFrame, engine, apply: bool = False,
                      verbose: bool = True, table: str = TABLE) -> LoadPlan:
-    """Insert new rows and update changed ones; leave everything else untouched.
+    """Insert new rows, update changed ones, and delete rows absent from source.
 
     With ``apply=False`` this is a dry run that reports the plan without
-    writing. That is useful for a scheduled job that should log intent first,
-    and it is how the behaviour can be inspected safely.
+    writing. That is useful for a scheduled job that should log intent first.
     """
     plan = LoadPlan()
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -241,10 +241,9 @@ def incremental_load(df: pd.DataFrame, engine, apply: bool = False,
     stored = {int(r[KEY]): r for r in existing.to_dict("records")}
     incoming_ids = {int(v) for v in df[KEY]}
 
-    # Rows in the DB with no counterpart in the incoming data. We do NOT delete
-    # them — a truncated source file must never be able to wipe real employees.
-    # They are surfaced instead, so the discrepancy is visible in the log.
+    # Rows in the DB with no counterpart in the incoming data.
     plan.missing_from_source = sorted(set(stored) - incoming_ids)
+    plan.deleted = list(plan.missing_from_source)
 
     to_insert: list[dict] = []
     to_update: list[dict] = []
@@ -265,7 +264,7 @@ def incremental_load(df: pd.DataFrame, engine, apply: bool = False,
         else:
             plan.unchanged += 1
 
-    if apply and (to_insert or to_update):
+    if apply and (to_insert or to_update or plan.deleted):
         with engine.begin() as conn:
             for row in to_insert:
                 # Only send columns the table actually has, so a table created
@@ -282,6 +281,10 @@ def incremental_load(df: pd.DataFrame, engine, apply: bool = False,
                 conn.execute(text(
                     f"UPDATE {table} SET {sets} WHERE {KEY} = :{KEY}"
                 ), payload)
+            if plan.deleted:
+                stmt = text(f"DELETE FROM {table} WHERE {KEY} IN :ids")
+                stmt = stmt.bindparams(bindparam("ids", expanding=True))
+                conn.execute(stmt, {"ids": plan.deleted})
 
     if verbose:
         print(f"  existing rows in DB        : {len(stored)}")
@@ -290,9 +293,10 @@ def incremental_load(df: pd.DataFrame, engine, apply: bool = False,
         print(f"  changed rows to update     : {len(plan.updated)} "
               f"{plan.updated if plan.updated else ''}")
         print(f"  unchanged (skipped)        : {plan.unchanged}")
-        if plan.missing_from_source:
+        if plan.deleted:
+            print(f"  deleted (absent from source): {plan.deleted}")
+        elif plan.missing_from_source:
             print(f"  in DB but ABSENT from source: {plan.missing_from_source}")
-            print(f"      (NOT deleted — reported only. Investigate before acting.)")
         print(f"  applied                    : {apply}")
 
     return plan

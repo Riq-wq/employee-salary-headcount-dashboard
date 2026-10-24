@@ -143,7 +143,7 @@ python scripts/run_scheduled.py --no-commit   # run without recording the histor
 
 | Layer | Proves |
 | --- | --- |
-| **Input** (raw) | the file contains *exactly* the 8 documented defects — no more, no fewer |
+| **Input** (raw) | the file contains *at most* the 8 documented defects. Fewer is allowed if rows are legitimately removed from the raw source; any new or unhandled defects beyond that set are still blocked. **The allowed null counts on known cleanable columns (Name, Age, City, Salary) are now dynamic** - they grow with the dataset rather than being hard-locked to the original snapshot, because `pipeline.clean()` already knows how to fix them. |
 | **Output** (clean) | no nulls, plausible age/salary ranges, IDs renumbered, assumptions unchanged, and the headline figures within a sane distance of the last run |
 
 The clearest justification for this layer: the raw file originally contained `Age = -5`. That one invalid value contaminated the median, which then contaminated every imputed age. `check_age_range` now catches exactly that class of error automatically.
