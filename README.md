@@ -33,10 +33,12 @@ The raw export is small, inconsistent, and unaggregated, so it answers none of t
 | | |
 | --- | --- |
 | **Source** | Raw HR export (CSV) — deliberately messy, as in the real world |
-| **Raw rows** | 12 |
-| **Clean rows** | 11 |
+| **Raw rows (published snapshot)** | 12 |
+| **Clean rows (published snapshot)** | 11 |
 | **Fields** | `EmployeeID`, `Name`, `Age`, `City`, `Salary`, `JoinDate` |
 | **Coverage** | 5 Kenyan cities · Jan–May 2025 · ages 25–40 |
+
+> **Note:** The pipeline now supports **dynamic filling of missing values** on cleanable columns (Name, Age, City, Salary). As new rows are added to the raw export with blanks in these fields, the validation gate allows the growth because `pipeline.clean()` imputes them (median for Age/Salary, Kisumu for City, Jamal for Name). The published snapshot numbers above remain the baseline; actual counts grow with each run and are tracked in `data/.pipeline_state.json`.
 
 ### 🧹 Data-Quality Issues & Cleaning Decisions
 
