@@ -33,8 +33,8 @@ The raw export is small, inconsistent, and unaggregated, so it answers none of t
 | | |
 | --- | --- |
 | **Source** | Raw HR export (CSV) — deliberately messy, as in the real world |
-| **Raw rows (published snapshot)** | 12 |
-| **Clean rows (published snapshot)** | 11 |
+| **Raw rows** | 10 |
+| **Clean rows** | 9 |
 | **Fields** | `EmployeeID`, `Name`, `Age`, `City`, `Salary`, `JoinDate` |
 | **Coverage** | 5 Kenyan cities · Jan–May 2025 · ages 25–40 |
 
