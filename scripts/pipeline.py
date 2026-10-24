@@ -32,9 +32,12 @@ Design rules (deliberate, and worth saying out loud in an interview):
    these with validation (Level 2) and incremental loading (Level 3) without
    rewriting the cleaning itself.
 
-Note on the two assumptions this project documents:
-  * Diana's blank city is filled with "Kisumu" as an ASSUMPTION, not a fact.
-    The mode is not unique (Kisumu, Mombasa and Nairobi all appear twice).
+Note on the assumptions this project documents:
+  * Diana's blank city: filled with "Kisumu" as an ASSUMPTION when the
+    dataset is small (< 50 rows or insufficient features). Once the dataset
+    grows to >= 50 rows with predictive features (Department, Role,
+    SalaryBand, JoinMonth), a RandomForest model imputes the city instead.
+    The switch is automatic — no manual change needed.
   * Row 9's blank name becomes the placeholder "Jamal"; no metric uses Name.
 """
 
@@ -70,6 +73,65 @@ ID_COL = "EmployeeID"
 # --------------------------------------------------------------------------
 # Stage 1 — clean
 # --------------------------------------------------------------------------
+
+# Threshold for enabling model-based city imputation.
+# Below this, we use the explicit assumption (Kisumu) which is documented.
+# At or above this, with sufficient predictive features, a RandomForest is used.
+CITY_IMPUTATION_MIN_SAMPLES = 50
+
+
+def impute_city(df: pd.DataFrame) -> pd.DataFrame:
+    """Impute missing City values.
+
+    Strategy:
+    - If we have >= CITY_IMPUTATION_MIN_SAMPLES labeled rows with at least
+      2 predictive features (Department, Role, SalaryBand, JoinMonth) ->
+      use a RandomForest classifier.
+    - Otherwise -> explicit assumption (Kisumu), documented as assumption.
+
+    The assumption is the current behavior for small datasets where the
+    mode is not unique and no reliable features exist. The model activates
+    automatically when the data supports it — no manual swap needed.
+    """
+    df = df.copy()
+    missing_mask = df["City"].isna()
+    if not missing_mask.any():
+        return df
+
+    # Check if we can do model-based imputation
+    known = df.dropna(subset=["City"])
+    # Only use features that actually exist in the dataframe
+    candidate_features = ["Department", "Role", "SalaryBand", "JoinMonth"]
+    features = [c for c in candidate_features if c in df.columns]
+
+    can_model = (
+        len(known) >= CITY_IMPUTATION_MIN_SAMPLES
+        and len(features) >= 2
+        and known["City"].nunique() >= 2
+    )
+
+    if can_model:
+        from sklearn.ensemble import RandomForestClassifier
+        clf = RandomForestClassifier(
+            n_estimators=100, random_state=42, class_weight="balanced"
+        )
+        clf.fit(known[features], known["City"])
+
+        preds = clf.predict(df.loc[missing_mask, features])
+        df.loc[missing_mask, "City"] = preds
+
+        # Log what we did (so it's not silent)
+        for idx, pred in zip(df[missing_mask].index, preds):
+            print(f"  [model] row {idx + 2} City imputed -> {pred}")
+    else:
+        # Fallback: explicit assumption (current behavior)
+        df.loc[missing_mask, "City"] = "Kisumu"
+        for idx in df[missing_mask].index:
+            print(f"  [assumption] row {idx + 2} City -> Kisumu (assumption)")
+
+    return df
+
+
 def repair_salary_digit_slip(df: pd.DataFrame, repairs: list | None = None) -> pd.DataFrame:
     """Undo a single missing or extra digit in a salary.
 
@@ -177,8 +239,8 @@ def clean(raw: pd.DataFrame, repairs: list | None = None) -> pd.DataFrame:
     # mean, because the mean is unusable if any outlier is still present.
     df["Salary"] = df["Salary"].fillna(df["Salary"].median())
 
-    # Blank city (Diana) -> Kisumu as an ASSUMPTION. The mode is not unique.
-    df["City"] = df["City"].fillna("Kisumu")
+    # Blank city (Diana) -> impute using model if enough data, else assumption.
+    df = impute_city(df)
 
     # Salary is whole KES. The median imputation above promoted the column to
     # float, so cast back to int - otherwise the CSV reads "55000.0".

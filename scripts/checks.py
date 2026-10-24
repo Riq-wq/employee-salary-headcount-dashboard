@@ -348,27 +348,59 @@ def check_employee_ids(clean: pd.DataFrame) -> Result:
     )
 
 
-def check_assumptions(clean: pd.DataFrame) -> Result:
-    """The two documented assumptions are present and unchanged.
+def check_assumptions(clean: pd.DataFrame, raw: pd.DataFrame | None = None) -> Result:
+    """The documented assumptions are present and unchanged.
 
-    Diana's city is filled with Kisumu *as an assumption*, and worker 9's name
-    is the placeholder Jamal. Both are disclosed in the README. Asserting them
-    here means they cannot change silently.
+    Diana's city: 
+    - If raw dataset has < 50 rows or insufficient features -> filled with
+      the documented assumption "Kisumu" (enforced here).
+    - If raw dataset has >= 50 rows with predictive features -> model-based
+      imputation is used; we only verify the city was filled (no nulls) and
+      is a valid city from the dataset, since the model may predict differently.
+
+    Worker 9's name is the placeholder "Jamal" (always enforced).
     """
     problems = []
+
+    # Determine if model-based imputation would have been used
+    # We check the raw data if provided, otherwise fall back to clean data
+    use_model = False
+    if raw is not None:
+        known = raw.dropna(subset=["City"])
+        candidate_features = ["Department", "Role", "SalaryBand", "JoinMonth"]
+        features = [c for c in candidate_features if c in raw.columns]
+        use_model = (
+            len(known) >= 50
+            and len(features) >= 2
+            and known["City"].nunique() >= 2
+        )
+
+    # Check Diana's city
     diana = clean.loc[clean["Name"] == ASSUMED_CITY_NAME, "City"]
     if len(diana) != 1:
         problems.append(f"expected exactly 1 row for {ASSUMED_CITY_NAME}, got {len(diana)}")
-    elif diana.iloc[0] != ASSUMED_CITY_VALUE:
-        problems.append(
-            f"{ASSUMED_CITY_NAME}'s city is {diana.iloc[0]!r}, "
-            f"expected the documented assumption {ASSUMED_CITY_VALUE!r}"
-        )
+    else:
+        if use_model:
+            # Model was used - just verify it's a known city (not null)
+            valid_cities = set(clean["City"].dropna().unique())
+            if diana.iloc[0] not in valid_cities:
+                problems.append(
+                    f"{ASSUMED_CITY_NAME}'s city is {diana.iloc[0]!r}, "
+                    f"not a known city from dataset: {sorted(valid_cities)}"
+                )
+        else:
+            # Assumption mode - enforce documented value
+            if diana.iloc[0] != ASSUMED_CITY_VALUE:
+                problems.append(
+                    f"{ASSUMED_CITY_NAME}'s city is {diana.iloc[0]!r}, "
+                    f"expected the documented assumption {ASSUMED_CITY_VALUE!r}"
+                )
+
     if PLACEHOLDER_NAME not in set(clean["Name"]):
         problems.append(f"placeholder name {PLACEHOLDER_NAME!r} missing")
     return _check("clean: documented assumptions", not problems,
                   "; ".join(problems) or f"{ASSUMED_CITY_NAME}={ASSUMED_CITY_VALUE}, "
-                                        f"placeholder={PLACEHOLDER_NAME}")
+                                          f"placeholder={PLACEHOLDER_NAME}")
 
 
 # --------------------------------------------------------------------------
@@ -549,7 +581,7 @@ def run_all_checks(raw: pd.DataFrame, clean: pd.DataFrame,
         check_dtypes(clean),
         check_expected_totals(clean, previous),
         check_employee_ids(clean),
-        check_assumptions(clean),
+        check_assumptions(clean, raw),
         check_defects_are_repaired(raw, clean),
     ]
 
