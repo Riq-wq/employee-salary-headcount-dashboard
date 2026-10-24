@@ -351,42 +351,43 @@ def check_employee_ids(clean: pd.DataFrame) -> Result:
 def check_assumptions(clean: pd.DataFrame, raw: pd.DataFrame | None = None) -> Result:
     """The documented assumptions are present and unchanged.
 
-    Diana's city: 
-    - If raw dataset has < 50 rows or insufficient features -> filled with
-      the documented assumption "Kisumu" (enforced here).
-    - If raw dataset has >= 50 rows with predictive features -> model-based
-      imputation is used; we only verify the city was filled (no nulls) and
-      is a valid city from the dataset, since the model may predict differently.
+    Diana's city:
+    - If raw dataset has a clear mode (one city leads by >= CITY_MODE_MIN_LEAD=1) ->
+      that mode is used (validated here).
+    - If raw dataset has a tie or no clear mode -> falls back to documented
+      assumption "Kisumu" (enforced here).
 
     Worker 9's name is the placeholder "Jamal" (always enforced).
     """
     problems = []
 
-    # Determine if model-based imputation would have been used
+    # Determine if mode-based imputation would have been used
     # We check the raw data if provided, otherwise fall back to clean data
-    use_model = False
+    use_mode = False
+    mode_city = None
     if raw is not None:
         known = raw.dropna(subset=["City"])
-        candidate_features = ["Department", "Role", "SalaryBand", "JoinMonth"]
-        features = [c for c in candidate_features if c in raw.columns]
-        use_model = (
-            len(known) >= 50
-            and len(features) >= 2
-            and known["City"].nunique() >= 2
-        )
+        if len(known) > 0:
+            city_counts = known["City"].value_counts()
+            top_city = city_counts.index[0]
+            top_count = city_counts.iloc[0]
+            second_count = city_counts.iloc[1] if len(city_counts) > 1 else 0
+            lead = top_count - second_count
+            if lead >= 1:  # CITY_MODE_MIN_LEAD from pipeline.py
+                use_mode = True
+                mode_city = top_city
 
     # Check Diana's city
     diana = clean.loc[clean["Name"] == ASSUMED_CITY_NAME, "City"]
     if len(diana) != 1:
         problems.append(f"expected exactly 1 row for {ASSUMED_CITY_NAME}, got {len(diana)}")
     else:
-        if use_model:
-            # Model was used - just verify it's a known city (not null)
-            valid_cities = set(clean["City"].dropna().unique())
-            if diana.iloc[0] not in valid_cities:
+        if use_mode:
+            # Mode was used - verify it matches the predicted mode
+            if diana.iloc[0] != mode_city:
                 problems.append(
                     f"{ASSUMED_CITY_NAME}'s city is {diana.iloc[0]!r}, "
-                    f"not a known city from dataset: {sorted(valid_cities)}"
+                    f"expected mode city {mode_city!r} (raw mode lead)"
                 )
         else:
             # Assumption mode - enforce documented value
@@ -398,9 +399,11 @@ def check_assumptions(clean: pd.DataFrame, raw: pd.DataFrame | None = None) -> R
 
     if PLACEHOLDER_NAME not in set(clean["Name"]):
         problems.append(f"placeholder name {PLACEHOLDER_NAME!r} missing")
-    return _check("clean: documented assumptions", not problems,
-                  "; ".join(problems) or f"{ASSUMED_CITY_NAME}={ASSUMED_CITY_VALUE}, "
-                                          f"placeholder={PLACEHOLDER_NAME}")
+    detail = "; ".join(problems) if problems else (
+        f"{ASSUMED_CITY_NAME}={diana.iloc[0] if len(diana) == 1 else 'missing'} "
+        f"({'mode' if use_mode else 'assumption'}), placeholder={PLACEHOLDER_NAME}"
+    )
+    return _check("clean: documented assumptions", not problems, detail)
 
 
 # --------------------------------------------------------------------------

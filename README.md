@@ -38,7 +38,7 @@ The raw export is small, inconsistent, and unaggregated, so it answers none of t
 | **Fields** | `EmployeeID`, `Name`, `Age`, `City`, `Salary`, `JoinDate` |
 | **Coverage** | 5 Kenyan cities · Jan–May 2025 · ages 25–40 |
 
-> **Note:** The pipeline now supports **dynamic filling of missing values** on cleanable columns (Name, Age, City, Salary). As new rows are added to the raw export with blanks in these fields, the validation gate allows the growth because `pipeline.clean()` imputes them (median for Age/Salary, Kisumu for City, Jamal for Name). The published snapshot numbers above remain the baseline; actual counts grow with each run and are tracked in `data/.pipeline_state.json`.
+> **Note:** The pipeline now supports **dynamic filling of missing values** on cleanable columns (Name, Age, City, Salary). As new rows are added to the raw export with blanks in these fields, the validation gate allows the growth because `pipeline.clean()` imputes them (median for Age/Salary, **mode for City when there's a clear winner, else Kisumu assumption**, Jamal for Name). The published snapshot numbers above remain the baseline; actual counts grow with each run and are tracked in `data/.pipeline_state.json`.
 
 ### 🧹 Data-Quality Issues & Cleaning Decisions
 
@@ -49,7 +49,7 @@ The raw export contained **8 distinct problems** — enough to make any naive an
 | `ID 2` (Bob) | `Age` blank | Imputed **29** (median age) | Median is robust to outliers; safe for a single gap |
 | `ID 3` (Charlie) | `Salary` blank | Imputed **59,500** (median salary) | The two digit slips make the mean unusable — median is safer |
 | `ID 4` (Alice) | **Exact duplicate** of `ID 1` | **Row removed** | Same person twice would double-count headcount and salary bill |
-| `ID 5` (Diana) | `City` blank | Filled with **Kisumu** | ⚠️ **Assumption, not a recovery** — see [Limitations](#-limitations--honest-scope) |
+| `ID 5` (Diana) | `City` blank | **Mode if clear winner, else Kisumu** | ⚠️ **Assumption when tied** — see [Limitations](#-limitations--honest-scope) |
 | `ID 7` (Faith) | `Age = -5` | Corrected to **29** | A negative age is invalid data, not a real value |
 | `ID 8` (George) | `Salary = 900,000` | Corrected to **90,000** | A ten-fold digit slip — inconsistent with the role and every peer |
 | `ID 9` (—) | `Name` blank | Placeholder **"Jamal"** | ⚠️ Name assumed — see [Limitations](#-limitations--honest-scope) |
@@ -73,7 +73,7 @@ A dashboard that hides its own gaps is worse than no dashboard. Two values in th
 
 | Value | Status | Why it is not recoverable | Impact |
 | --- | --- | --- | --- |
-| **Diana's `City` → Kisumu** | **Assumption** | Location cannot be derived from age, salary, or join date, and the export holds no evidence for any particular city — so the value is a disclosed placeholder, not a recovered fact. | Affects **two metrics**: Kisumu's average is **66,375** *with* the assumption, **65,167** without it, and its headcount is **4 of 11** with it but **3** without. The headcount lead does **not** survive the assumption — with Diana, Kisumu leads on 4; without her it ties Nairobi on 3. |
+| **Diana's `City` → Mode (or Kisumu if tied)** | **Assumption when tied** | Location cannot be derived from age, salary, or join date. When a clear mode exists (one city leads), that mode is used. When tied, falls back to Kisumu as a disclosed placeholder. | Affects **two metrics**: the chosen city's average/headcount includes Diana. With mode=Nairobi, Nairobi leads. With assumption=Kisumu, Kisumu leads. The pipeline logs which was used (`[mode]` or `[assumption]`). |
 | **ID 9's `Name` → "Jamal"** | **Placeholder** | Names carry no analytical weight — no calculation touches this field. | **None.** No metric depends on it. |
 
 **What survives either way.** Total salary **679,500** · mean **61,773** · median **59,500** · the **109%** cleaning finding · the **distribution analysis** · the **hiring trend** — all identical regardless of either assumption. Only Kisumu's city average and headcount move.
